@@ -53,3 +53,28 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Build output — everything comes from out-of-source builds into build/
+build/
+build-*/
+cmake-build-*/
+
+# CMake in-source-configure guard — shouldn't appear if you always use
+# cmake -S . -B build, but ignored just in case someone configures in place
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+
+# Additional compiled binary format not yet covered above —
+# relevant once a real hardware BSP produces .bin images
+*.bin
+
+# Editor tooling generated locally, not part of the project
+compile_commands.json
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
