@@ -1,0 +1,6 @@
+[submodule "third_party/osal"]
+	path = third_party/osal
+	url = https://github.com/nasa/osal.git
+[submodule "third_party/FreeRTOS-Kernel"]
+	path = third_party/FreeRTOS-Kernel
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
