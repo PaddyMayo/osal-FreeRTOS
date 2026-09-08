@@ -22,5 +22,5 @@
   	"containerEnv": {
     	"SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock"
   	},
-  	"postCreateCommand": "git submodule update --init --recursive"
+  	"postCreateCommand": "git submodule update --init --recursive && pre-commit install"
 }
