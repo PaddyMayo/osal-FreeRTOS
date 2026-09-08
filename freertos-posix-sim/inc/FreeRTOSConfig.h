@@ -56,4 +56,20 @@
 #define configMAX_CO_ROUTINE_PRIORITIES 1
 
 /* API inclusions OSAL's task/queue/semaphore Impl functions rely on */
-#define
+#define INCLUDE_vTaskDelete                 1
+#define INCLUDE_vTaskDelay                  1
+#define INCLUDE_vTaskDelayUntil             1
+#define INCLUDE_vTaskSuspend                1
+#define INCLUDE_vTaskPrioritySet            1
+#define INCLUDE_uxTaskPriorityGet           1
+#define INCLUDE_eTaskGetState               1
+#define INCLUDE_xTaskAbortDelay             1
+#define INCLUDE_xTaskGetHandle              1
+#define INCLUDE_xTaskGetSchedulerState      1
+#define INCLUDE_xTaskGetCurrentTaskHandle   1
+#define INCLUDE_xTaskGetIdleTaskHandle      1
+#define INCLUDE_uxTaskGetStackHighWaterMark 1
+#define INCLUDE_xSemaphoreGetMutexHolder    1
+#define INCLUDE_xTimerPendFunctionCall      1
+
+#endif /* FREERTOS_CONFIG_H */
