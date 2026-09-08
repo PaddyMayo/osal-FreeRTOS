@@ -9,6 +9,5 @@ set(OSAL_SYSTEM_BSPTYPE freertos-posix-sim)
 set(OSAL_EXT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(ENABLE_UNIT_TESTS TRUE CACHE BOOL "")
 
-add_subdirectory(freertos-posix-sim)
 add_subdirectory(third_party/FreeRTOS-Kernel freertos_kernel)
 add_subdirectory(third_party/osal osal_build)
