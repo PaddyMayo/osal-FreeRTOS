@@ -1,0 +1,31 @@
+name: build-and-test
+on: [push, pull_request]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container: ghcr.io/PaddyMayo/osal-freertos-dev:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: cmake -S . -B build
+      - run: cmake --build build -j
+      - run: ctest --test-dir build --output-on-failure
+
+  lint:
+    runs-on: ubuntu-latest
+    container: ghcr.io/PaddyMayo/osal-freertos-dev:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: find freertos freertos-posix-sim -name '*.c' -o -name '*.h' | xargs clang-format --dry-run --Werror
+
+  static-analysis:
+    runs-on: ubuntu-latest
+    container: ghcr.io/PaddyMayo/osal-freertos-dev:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: cppcheck --enable=warning,style,performance,portability --error-exitcode=1 --suppress=missingIncludeSystem freertos freertos-posix-sim
+      - run: cppcheck --addon=misra freertos freertos-posix-sim
