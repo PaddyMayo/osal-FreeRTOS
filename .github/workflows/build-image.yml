@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Dockerfile'
+      - '.devcontainer/Dockerfile'
   workflow_dispatch:
 
 jobs:
@@ -22,5 +22,6 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          file: .devcontainer/Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/osal-freertos-dev:latest
+          tags: ghcr.io/paddymayo/osal-freertos-dev:latest

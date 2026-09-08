@@ -4,7 +4,7 @@ on: [push, pull_request]
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    container: ghcr.io/PaddyMayo/osal-freertos-dev:latest
+    container: ghcr.io/paddymayo/osal-freertos-dev:latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -15,14 +15,14 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
-    container: ghcr.io/PaddyMayo/osal-freertos-dev:latest
+    container: ghcr.io/paddymayo/osal-freertos-dev:latest
     steps:
       - uses: actions/checkout@v4
       - run: find freertos freertos-posix-sim -name '*.c' -o -name '*.h' | xargs clang-format --dry-run --Werror
 
   static-analysis:
     runs-on: ubuntu-latest
-    container: ghcr.io/PaddyMayo/osal-freertos-dev:latest
+    container: ghcr.io/paddymayo/osal-freertos-dev:latest
     steps:
       - uses: actions/checkout@v4
         with:
