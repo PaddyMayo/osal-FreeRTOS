@@ -9,6 +9,6 @@ repos:
     hooks:
       - id: cppcheck
         name: cppcheck
-        entry: cppcheck --enable=warning,style,performance,portability --error-exitcode=1 --suppress=missingIncludeSystem
+        entry: cppcheck --enable=warning,style,performance,portability --error-exitcode=1 --suppress=missingIncludeSystem --inline-suppr
         language: system
         files: \.(c|h)$
