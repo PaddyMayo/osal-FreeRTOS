@@ -13,6 +13,7 @@
 #define configMAX_TASK_NAME_LEN                 16
 #define configIDLE_SHOULD_YIELD                 1
 #define configUSE_16_BIT_TICKS                  0
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
 /* Memory allocation */
 #define configSUPPORT_STATIC_ALLOCATION  1
