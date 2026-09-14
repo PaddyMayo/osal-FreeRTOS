@@ -30,4 +30,4 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: cppcheck --addon=misra freertos freertos-posix-sim
+      - run: cppcheck --addon=misra freertos generic-freertos-posix generic-freertos
