@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(osal_freertos_port C)
 
-set(FREERTOS_PORT GCC_POSIX CACHE STRING "")
 set(FREERTOS_HEAP 4 CACHE STRING "")
 
 set(OSAL_SYSTEM_OSTYPE freertos)
