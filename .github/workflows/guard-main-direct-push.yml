@@ -1,0 +1,60 @@
+name: guard-main-direct-push
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: guard-main
+  cancel-in-progress: false
+
+jobs:
+  revert-if-unauthorized:
+    # Pushes made by the auto-merge workflow's GITHUB_TOKEN show up as this
+    # actor; anything else reaching main bypassed the PR flow.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to this run's own triggering commit: if a later push queues
+      # up behind this one, "main" may have already moved by the time this
+      # job executes, and checking out the branch instead of this exact SHA
+      # would revert further than this run's own before/after pair intends.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.after }}
+          fetch-depth: 0
+
+      - name: Revert unauthorized direct push to main
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "No prior commit to revert to (branch creation); leaving main as-is."
+            exit 0
+          fi
+
+          # Whether GITHUB_TOKEN can push a given change to .github/workflows/
+          # content is an inconsistent, undocumented platform behavior (it
+          # depends on things like whether the "before" commit is a brand
+          # new/deleted file vs a body-only edit, and even then isn't fully
+          # reliable across a rewritten history) - rather than depend on
+          # that, skip reverting entirely whenever the push touches workflow
+          # files. Those changes can only ever be made by a human pushing
+          # directly anyway, so there's nothing unauthorized to catch here.
+          if ! WORKFLOW_DIFF=$(git diff --name-only "$BEFORE_SHA" HEAD -- .github/workflows/ 2>&1); then
+            echo "Could not diff against ${BEFORE_SHA} (likely a rewritten history); leaving main as-is to be safe."
+            exit 0
+          fi
+          if [ -n "$WORKFLOW_DIFF" ]; then
+            echo "Push touches .github/workflows/ - skipping automatic revert:"
+            echo "$WORKFLOW_DIFF"
+            exit 0
+          fi
+
+          echo "Direct push to main by ${{ github.actor }} detected. Resetting main back to ${BEFORE_SHA}."
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git push origin "${BEFORE_SHA}:main" --force
