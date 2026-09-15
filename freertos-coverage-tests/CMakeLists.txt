@@ -17,6 +17,12 @@
 # not visible here as a CMake variable - real OSAL/ut_assert paths below are
 # written relative to CMAKE_SOURCE_DIR instead.
 #
+# Module discovery: for every freertos/src/os-impl-<module>.c, if a
+# matching src/coveragetest-<module>.c exists here, a coverage test target
+# is generated automatically. Adding a new module's coverage test is just
+# dropping in those two files (plus, if the module needs its own FreeRTOS
+# API fakes, stubs/freertos-<module>-stubs.c) - nothing below needs editing.
+#
 ##########################################################################
 
 set(OSAL_REAL_SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/osal)
@@ -30,29 +36,12 @@ set(FREERTOS_COVERAGE_INCLUDES
     ${UT_ASSERT_REAL_SOURCE_DIR}/inc
 )
 
-# The file under test, compiled with gcov instrumentation and pointed at our
-# fake FreeRTOS headers (fake-inc) instead of the real kernel. Applying
-# --coverage directly (rather than through OSAL's ut_coverage_compile/
-# ut_coverage_link interface targets) avoids those targets' own transitive
-# link to ut_assert -> osal_bsp.
-add_library(utobj_freertos_tasks OBJECT
-    ${CMAKE_SOURCE_DIR}/freertos/src/os-impl-tasks.c
-)
-target_include_directories(utobj_freertos_tasks BEFORE PRIVATE fake-inc)
-target_include_directories(utobj_freertos_tasks PRIVATE
-    ${OSAL_REAL_SOURCE_DIR}/src/os/inc
-    ${OSAL_REAL_SOURCE_DIR}/src/os/shared/inc
-    ${CMAKE_BINARY_DIR}/osal_build/inc
-)
-target_compile_options(utobj_freertos_tasks PRIVATE --coverage)
-
-# The stubs, test cases, and ut_assert's own (BSP-independent) sources are
-# compiled normally - no coverage instrumentation needed on the harness
-# itself, matching OSAL's own convention.
-add_executable(coverage-freertos-tasks-testrunner
+# Sources every module's test executable needs regardless of which OSAL
+# subsystem it targets: the plain (non-scheduler) main(), the OS_task_table/
+# OS_TaskEntryPoint-style shared-layer stand-ins, the minimal UT_BSP_*
+# implementation, and ut_assert's own OS-agnostic sources.
+set(FREERTOS_COVERAGE_COMMON_SOURCES
     src/main.c
-    src/coveragetest-tasks.c
-    stubs/freertos-task-stubs.c
     stubs/osal-shared-stubs.c
     stubs/ut-bsp-stubs.c
     ${UT_ASSERT_REAL_SOURCE_DIR}/src/utassert.c
@@ -60,13 +49,50 @@ add_executable(coverage-freertos-tasks-testrunner
     ${UT_ASSERT_REAL_SOURCE_DIR}/src/uttools.c
     ${UT_ASSERT_REAL_SOURCE_DIR}/src/utstubs.c
     ${UT_ASSERT_REAL_SOURCE_DIR}/src/uttest.c
-    $<TARGET_OBJECTS:utobj_freertos_tasks>
 )
-target_include_directories(coverage-freertos-tasks-testrunner PRIVATE
-    ${FREERTOS_COVERAGE_INCLUDES}
-)
-target_compile_definitions(coverage-freertos-tasks-testrunner PRIVATE "_UNIT_TEST_")
-target_compile_options(coverage-freertos-tasks-testrunner PRIVATE --coverage)
-target_link_options(coverage-freertos-tasks-testrunner PRIVATE --coverage)
 
-add_test(NAME coverage-freertos-tasks COMMAND coverage-freertos-tasks-testrunner)
+# Umbrella target aggregating every discovered module's testrunner below, so
+# CI (and anyone else) can build "all coverage tests that currently exist"
+# without naming any specific module.
+add_custom_target(freertos_coverage_tests)
+
+file(GLOB FREERTOS_IMPL_SOURCES ${CMAKE_SOURCE_DIR}/freertos/src/os-impl-*.c)
+
+foreach(IMPL_SRC ${FREERTOS_IMPL_SOURCES})
+    get_filename_component(IMPL_NAME ${IMPL_SRC} NAME_WE)
+    string(REPLACE "os-impl-" "" MODULE_NAME ${IMPL_NAME})
+
+    set(COVERAGETEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/coveragetest-${MODULE_NAME}.c)
+    if (NOT EXISTS ${COVERAGETEST_SRC})
+        continue()
+    endif ()
+
+    set(UTOBJ_TARGET utobj_freertos_${MODULE_NAME})
+    set(TESTRUNNER_TARGET coverage-freertos-${MODULE_NAME}-testrunner)
+
+    # The file under test, compiled with gcov instrumentation and pointed at
+    # our fake FreeRTOS headers (fake-inc) instead of the real kernel.
+    add_library(${UTOBJ_TARGET} OBJECT ${IMPL_SRC})
+    target_include_directories(${UTOBJ_TARGET} BEFORE PRIVATE fake-inc)
+    target_include_directories(${UTOBJ_TARGET} PRIVATE ${FREERTOS_COVERAGE_INCLUDES})
+    target_compile_options(${UTOBJ_TARGET} PRIVATE --coverage)
+
+    set(MODULE_SOURCES ${FREERTOS_COVERAGE_COMMON_SOURCES} ${COVERAGETEST_SRC})
+
+    set(MODULE_STUB ${CMAKE_CURRENT_SOURCE_DIR}/stubs/freertos-${MODULE_NAME}-stubs.c)
+    if (EXISTS ${MODULE_STUB})
+        list(APPEND MODULE_SOURCES ${MODULE_STUB})
+    endif ()
+
+    add_executable(${TESTRUNNER_TARGET}
+        ${MODULE_SOURCES}
+        $<TARGET_OBJECTS:${UTOBJ_TARGET}>
+    )
+    target_include_directories(${TESTRUNNER_TARGET} PRIVATE ${FREERTOS_COVERAGE_INCLUDES})
+    target_compile_definitions(${TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_")
+    target_compile_options(${TESTRUNNER_TARGET} PRIVATE --coverage)
+    target_link_options(${TESTRUNNER_TARGET} PRIVATE --coverage)
+
+    add_test(NAME coverage-freertos-${MODULE_NAME} COMMAND ${TESTRUNNER_TARGET})
+    add_dependencies(freertos_coverage_tests ${TESTRUNNER_TARGET})
+endforeach()

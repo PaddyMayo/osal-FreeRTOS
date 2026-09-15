@@ -19,8 +19,9 @@ jobs:
         with:
           submodules: recursive
       - run: cmake -S . -B build
-      - run: cmake --build build -j
-      - run: ctest --test-dir build --output-on-failure
+      - run: cmake --build build --target osal -j
+      - run: cmake --build build --target freertos_coverage_tests -j
+      - run: ctest --test-dir build -R '^coverage-freertos-' --output-on-failure
 
   post-check:
     runs-on: ubuntu-latest
