@@ -28,7 +28,7 @@ jobs:
             exit 0
           fi
 
-          STATE=$(gh pr view "$PR_NUMBER" --json state --jq .state)
+          STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq .state)
           if [ "$STATE" != "OPEN" ]; then
             echo "PR #${PR_NUMBER} is not open (state=${STATE}); skipping."
             exit 0
@@ -39,4 +39,4 @@ jobs:
           # content (a hard platform restriction). A PR that touches
           # workflow files will fail to merge here and needs a human to
           # push it to main directly instead.
-          gh pr merge "$PR_NUMBER" --squash --delete-branch
+          gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --delete-branch
