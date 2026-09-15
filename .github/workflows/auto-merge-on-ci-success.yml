@@ -1,0 +1,42 @@
+name: auto-merge-on-ci-success
+
+on:
+  workflow_run:
+    workflows: ["build-and-test"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge PR if CI passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          PR_NUMBER=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/pulls" --jq '.[0].number')
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "No associated PR found for ${HEAD_SHA}; skipping."
+            exit 0
+          fi
+
+          STATE=$(gh pr view "$PR_NUMBER" --json state --jq .state)
+          if [ "$STATE" != "OPEN" ]; then
+            echo "PR #${PR_NUMBER} is not open (state=${STATE}); skipping."
+            exit 0
+          fi
+
+          echo "CI succeeded for PR #${PR_NUMBER}; merging."
+          # Note: GITHUB_TOKEN can never create/modify .github/workflows/*
+          # content (a hard platform restriction). A PR that touches
+          # workflow files will fail to merge here and needs a human to
+          # push it to main directly instead.
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
