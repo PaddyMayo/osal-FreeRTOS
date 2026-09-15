@@ -10,3 +10,7 @@ set(ENABLE_UNIT_TESTS TRUE CACHE BOOL "")
 
 add_subdirectory(third_party/osal osal_build)
 add_subdirectory(third_party/FreeRTOS-Kernel freertos_kernel)
+
+if (ENABLE_UNIT_TESTS)
+    add_subdirectory(freertos-coverage-tests)
+endif ()
