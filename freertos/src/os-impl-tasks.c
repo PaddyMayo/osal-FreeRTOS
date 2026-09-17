@@ -8,11 +8,7 @@
 
 #include "osconfig.h"
 
-typedef struct
-{
-    TaskHandle_t id;
-    StaticTask_t tcb_buffer;
-} OS_impl_task_internal_record_t;
+#include "os-impl-tasks.h"
 
 OS_impl_task_internal_record_t OS_impl_task_table[OS_MAX_TASKS];
 

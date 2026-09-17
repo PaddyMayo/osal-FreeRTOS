@@ -20,8 +20,10 @@
 # Module discovery: for every freertos/src/os-impl-<module>.c, if a
 # matching src/coveragetest-<module>.c exists here, a coverage test target
 # is generated automatically. Adding a new module's coverage test is just
-# dropping in those two files (plus, if the module needs its own FreeRTOS
-# API fakes, stubs/freertos-<module>-stubs.c) - nothing below needs editing.
+# dropping in those two files, plus - if the module needs them - its own
+# FreeRTOS API fakes in stubs/freertos-<module>-stubs.c and/or test-only
+# accessors into the module's internal state in
+# adaptors/src/ut-adaptor-<module>.c. Nothing below needs editing.
 #
 ##########################################################################
 
@@ -30,6 +32,8 @@ set(UT_ASSERT_REAL_SOURCE_DIR ${OSAL_REAL_SOURCE_DIR}/ut_assert)
 
 set(FREERTOS_COVERAGE_INCLUDES
     fake-inc
+    adaptors/inc
+    ${CMAKE_SOURCE_DIR}/freertos/inc
     ${OSAL_REAL_SOURCE_DIR}/src/os/inc
     ${OSAL_REAL_SOURCE_DIR}/src/os/shared/inc
     ${CMAKE_BINARY_DIR}/osal_build/inc
@@ -82,6 +86,11 @@ foreach(IMPL_SRC ${FREERTOS_IMPL_SOURCES})
     set(MODULE_STUB ${CMAKE_CURRENT_SOURCE_DIR}/stubs/freertos-${MODULE_NAME}-stubs.c)
     if (EXISTS ${MODULE_STUB})
         list(APPEND MODULE_SOURCES ${MODULE_STUB})
+    endif ()
+
+    set(MODULE_ADAPTOR ${CMAKE_CURRENT_SOURCE_DIR}/adaptors/src/ut-adaptor-${MODULE_NAME}.c)
+    if (EXISTS ${MODULE_ADAPTOR})
+        list(APPEND MODULE_SOURCES ${MODULE_ADAPTOR})
     endif ()
 
     add_executable(${TESTRUNNER_TARGET}
