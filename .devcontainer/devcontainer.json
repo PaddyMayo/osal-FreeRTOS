@@ -5,7 +5,8 @@
 	},
 	"mounts": [
 	    "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
-		"source=${localEnv:HOME}/.docker-shared/gitconfig,target=/home/vscode/.gitconfig,type=bind"
+		"source=${localEnv:HOME}/.docker-shared/gitconfig,target=/home/vscode/.gitconfig,type=bind",
+		"source=${localEnv:HOME}/.docker-shared/gh-config,target=/home/vscode/.config/gh,type=bind"
  	 ],
 	 "customizations": {
     	"vscode": {
