@@ -19,6 +19,7 @@ current=$(git rev-parse --abbrev-ref HEAD)
 created_branch=false
 
 if [ "$current" = "main" ]; then
+  git fetch origin main
   if [ -z "$(git log origin/main..HEAD --oneline 2>/dev/null)" ]; then
     echo "No commits ahead of origin/main - commit your changes first." >&2
     exit 1
