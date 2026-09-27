@@ -183,12 +183,17 @@ int main(int argc, char *argv[])
      * runs the application's main loop.  vTaskStartScheduler() below is what
      * actually begins executing it.
      */
-    xTaskCreate(OS_BSP_StartupTask,
-                "OSAL_Startup",
-                (configMINIMAL_STACK_SIZE * 4),
-                NULL,
-                (configMAX_PRIORITIES / 2),
-                NULL);
+    if (xTaskCreate(OS_BSP_StartupTask,
+                    "OSAL_Startup",
+                    (configMINIMAL_STACK_SIZE * 4),
+                    NULL,
+                    (configMAX_PRIORITIES / 2),
+                    NULL)
+        != pdPASS)
+    {
+        /* Without this task the scheduler would run forever with nothing to do */
+        return EXIT_FAILURE;
+    }
 
     vTaskStartScheduler();
 

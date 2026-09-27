@@ -18,7 +18,8 @@
 /* Memory allocation */
 #define configSUPPORT_STATIC_ALLOCATION  1
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
-#define configTOTAL_HEAP_SIZE            ((size_t)(1024 * 1024))
+/* Sized for PTHREAD_STACK_MIN-based task stacks: the OSAL startup task alone needs 4 MiB on aarch64 */
+#define configTOTAL_HEAP_SIZE            ((size_t)(16 * 1024 * 1024))
 
 /* Synchronization primitives OSAL needs */
 #define configUSE_MUTEXES             1
