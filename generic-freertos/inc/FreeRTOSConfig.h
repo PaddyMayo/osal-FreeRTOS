@@ -1,25 +1,38 @@
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
-#include <pthread.h>
+/* Platform setup, supplied by each BSP's inc directory */
+#include "FreeRTOSConfigPlatform.h"
+#include "FreeRTOSPlatformContract.h"
 
 /* Scheduling */
 #define configUSE_PREEMPTION                    1
-#define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
+#define configUSE_PORT_OPTIMISED_TASK_SELECTION OSAL_FREERTOS_PLATFORM_OPTIMISED_TASK_SELECTION
 #define configUSE_TICKLESS_IDLE                 0
-#define configTICK_RATE_HZ                      100
+#define configTICK_RATE_HZ                      OSAL_FREERTOS_PLATFORM_TICK_RATE_HZ
 #define configMAX_PRIORITIES                    7
-#define configMINIMAL_STACK_SIZE                (PTHREAD_STACK_MIN)
+#define configMINIMAL_STACK_SIZE                OSAL_FREERTOS_PLATFORM_MINIMAL_STACK_SIZE
 #define configMAX_TASK_NAME_LEN                 16
 #define configIDLE_SHOULD_YIELD                 1
 #define configUSE_16_BIT_TICKS                  0
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
+#if defined(OSAL_FREERTOS_PLATFORM_CPU_CLOCK_HZ)
+#define configCPU_CLOCK_HZ OSAL_FREERTOS_PLATFORM_CPU_CLOCK_HZ
+#endif
+
+/* Interrupt priorities */
+#if defined(OSAL_FREERTOS_PLATFORM_KERNEL_INTERRUPT_PRIORITY)
+#define configKERNEL_INTERRUPT_PRIORITY OSAL_FREERTOS_PLATFORM_KERNEL_INTERRUPT_PRIORITY
+#endif
+#if defined(OSAL_FREERTOS_PLATFORM_MAX_SYSCALL_INTERRUPT_PRIORITY)
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY OSAL_FREERTOS_PLATFORM_MAX_SYSCALL_INTERRUPT_PRIORITY
+#endif
+
 /* Memory allocation */
 #define configSUPPORT_STATIC_ALLOCATION  1
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
-/* Sized for PTHREAD_STACK_MIN-based task stacks: the OSAL startup task alone needs 4 MiB on aarch64 */
-#define configTOTAL_HEAP_SIZE            ((size_t)(16 * 1024 * 1024))
+#define configTOTAL_HEAP_SIZE            OSAL_FREERTOS_PLATFORM_TOTAL_HEAP_SIZE
 
 /* Synchronization primitives OSAL needs */
 #define configUSE_MUTEXES             1
@@ -45,13 +58,14 @@
 #define configCHECK_FOR_STACK_OVERFLOW 2
 #define configUSE_TRACE_FACILITY       0
 #define configGENERATE_RUN_TIME_STATS  0
-#define configASSERT(x)           \
-    if ((x) == 0)                 \
-    {                             \
-        taskDISABLE_INTERRUPTS(); \
-        for (;;)                  \
-            ;                     \
-    }
+#define configASSERT(x)                                               \
+    do                                                                \
+    {                                                                 \
+        if ((x) == 0)                                                 \
+        {                                                             \
+            OSAL_FREERTOS_PLATFORM_ASSERT_FAILED(__FILE__, __LINE__); \
+        }                                                             \
+    } while (0)
 
 /* Co-routines — unused, legacy FreeRTOS feature */
 #define configUSE_CO_ROUTINES           0
@@ -77,7 +91,7 @@
 /* Port hooks */
 #ifndef __ASSEMBLER__
 /* weak: binaries that link the kernel without OSAL's FreeRTOS layer (e.g. other OS coverage tests) leave it NULL */
-void OS_FreeRTOS_TaskCleanup(const void *tcb) __attribute__((weak));
+OSAL_FREERTOS_PLATFORM_WEAK void OS_FreeRTOS_TaskCleanup(const void *tcb);
 #endif
 
 #define OSAL_FREERTOS_TASK_CLEANUP(pxTCB)    \
@@ -89,14 +103,14 @@ void OS_FreeRTOS_TaskCleanup(const void *tcb) __attribute__((weak));
         }                                    \
     } while (0)
 
-#if defined(OSAL_FREERTOS_PORT_POSIX)
+#if defined(OSAL_FREERTOS_PLATFORM_PORT_CLEAN_UP_TCB)
 #include "portmacro.h"
 #undef portCLEAN_UP_TCB
-#define portCLEAN_UP_TCB(pxTCB)            \
-    do                                     \
-    {                                      \
-        vPortCancelThread(pxTCB);          \
-        OSAL_FREERTOS_TASK_CLEANUP(pxTCB); \
+#define portCLEAN_UP_TCB(pxTCB)                          \
+    do                                                   \
+    {                                                    \
+        OSAL_FREERTOS_PLATFORM_PORT_CLEAN_UP_TCB(pxTCB); \
+        OSAL_FREERTOS_TASK_CLEANUP(pxTCB);               \
     } while (0)
 #else
 #define portCLEAN_UP_TCB(pxTCB) OSAL_FREERTOS_TASK_CLEANUP(pxTCB)

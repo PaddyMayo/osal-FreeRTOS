@@ -1,6 +1,5 @@
 add_library(freertos_config INTERFACE)
-target_include_directories(freertos_config SYSTEM INTERFACE inc)
-target_compile_definitions(freertos_config INTERFACE OSAL_FREERTOS_PORT_POSIX)
+target_include_directories(freertos_config SYSTEM INTERFACE inc ${CMAKE_SOURCE_DIR}/generic-freertos/inc)
 
 add_library(osal_generic-freertos-posix_impl OBJECT
     src/bsp_console.c
