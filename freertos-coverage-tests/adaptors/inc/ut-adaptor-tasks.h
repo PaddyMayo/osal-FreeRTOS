@@ -24,6 +24,10 @@
 extern void *const  UT_Ref_OS_impl_task_table;
 extern size_t const UT_Ref_OS_impl_task_table_SIZE;
 
-void UT_TaskTest_SetImplTaskId(osal_index_t local_id, TaskHandle_t TaskId);
+void         UT_TaskTest_SetImplTaskId(osal_index_t local_id, TaskHandle_t TaskId);
+TaskHandle_t UT_TaskTest_GetImplTaskId(osal_index_t local_id);
+void        *UT_TaskTest_GetImplTcb(osal_index_t local_id);
+StackType_t *UT_TaskTest_GetImplStackBuffer(osal_index_t local_id);
+void         UT_TaskTest_SetImplStackBuffer(osal_index_t local_id, StackType_t *stack);
 
 #endif /* UT_ADAPTOR_TASKS_H */

@@ -43,15 +43,51 @@ static void OS_FreeRTOSTaskEntry(void *pvParameters)
 
 /*----------------------------------------------------------------
  *
- *  Purpose: Local helper routine, not part of OSAL API.
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Remaps the OSAL priority (0=highest .. OS_MAX_TASK_PRIORITY=lowest)
  *           into a FreeRTOS priority (0=lowest .. configMAX_PRIORITIES-1=highest).
+ *           See prototype in os-impl-tasks.h.
  *
  *-----------------------------------------------------------------*/
-static UBaseType_t OS_PriorityRemap(osal_priority_t priority)
+UBaseType_t OS_FreeRTOS_PriorityRemap(osal_priority_t priority)
 {
     return (UBaseType_t)(configMAX_PRIORITIES - 1)
            - (((UBaseType_t)priority * (configMAX_PRIORITIES - 1)) / OS_MAX_TASK_PRIORITY);
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Called through portCLEAN_UP_TCB once the kernel is finished
+ *           with a deleted task: frees the stack OS_TaskCreate_Impl
+ *           allocated for it, if any, and marks the slot free for reuse.
+ *           Runs in the idle task for a task that deleted itself, so it
+ *           must not block. See prototype in os-impl-tasks.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_TaskCleanup(const void *tcb)
+{
+    OS_impl_task_internal_record_t *impl;
+    StackType_t                    *stack;
+
+    for (uint32 i = 0; i < OS_MAX_TASKS; ++i)
+    {
+        impl = &OS_impl_task_table[i];
+
+        if (tcb == &impl->tcb_buffer)
+        {
+            stack              = impl->stack_buffer;
+            impl->stack_buffer = NULL;
+
+            if (stack != NULL)
+            {
+                vPortFree(stack);
+            }
+
+            impl->id = NULL;
+            break;
+        }
+    }
 }
 
 /*----------------------------------------------------------------
@@ -85,7 +121,6 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
     OS_VoidPtrValueWrapper_t        arg;
     OS_impl_task_internal_record_t *impl;
     OS_task_internal_record_t      *task;
-    StackType_t                    *stack_buffer;
     configSTACK_DEPTH_TYPE          stack_depth;
 
     memset(&arg, 0, sizeof(arg));
@@ -95,34 +130,40 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
     task = OS_OBJECT_TABLE_GET(OS_task_table, *token);
     impl = OS_OBJECT_TABLE_GET(OS_impl_task_table, *token);
 
+    if (impl->id != NULL)
+    {
+        return OS_ERROR;
+    }
+
     stack_depth = task->stack_size / sizeof(StackType_t);
 
     if (task->stack_pointer == OSAL_TASK_STACK_ALLOCATE)
     {
-        stack_buffer = pvPortMalloc(stack_depth * sizeof(StackType_t));
-        if (stack_buffer == NULL)
+        impl->stack_buffer = pvPortMalloc(stack_depth * sizeof(StackType_t));
+        if (impl->stack_buffer == NULL)
         {
             return OS_ERROR;
         }
     }
     else
     {
-        stack_buffer = (StackType_t *)task->stack_pointer;
+        impl->stack_buffer = NULL;
     }
 
     impl->id = xTaskCreateStatic(OS_FreeRTOSTaskEntry,
                                  task->task_name,
                                  stack_depth,
                                  arg.opaque_arg,
-                                 OS_PriorityRemap(task->priority),
-                                 stack_buffer,
+                                 OS_FreeRTOS_PriorityRemap(task->priority),
+                                 (impl->stack_buffer != NULL) ? impl->stack_buffer : (StackType_t *)task->stack_pointer,
                                  &impl->tcb_buffer);
 
     if (impl->id == NULL)
     {
-        if (task->stack_pointer == OSAL_TASK_STACK_ALLOCATE)
+        if (impl->stack_buffer != NULL)
         {
-            vPortFree(stack_buffer);
+            vPortFree(impl->stack_buffer);
+            impl->stack_buffer = NULL;
         }
 
         return OS_ERROR;
@@ -197,7 +238,7 @@ int32 OS_TaskSetPriority_Impl(const OS_object_token_t *token, osal_priority_t ne
 
     impl = OS_OBJECT_TABLE_GET(OS_impl_task_table, *token);
 
-    vTaskPrioritySet(impl->id, OS_PriorityRemap(new_priority));
+    vTaskPrioritySet(impl->id, OS_FreeRTOS_PriorityRemap(new_priority));
 
     return OS_SUCCESS;
 }

@@ -74,4 +74,32 @@
 #define INCLUDE_xSemaphoreGetMutexHolder    1
 #define INCLUDE_xTimerPendFunctionCall      1
 
+/* Port hooks */
+#ifndef __ASSEMBLER__
+/* weak: binaries that link the kernel without OSAL's FreeRTOS layer (e.g. other OS coverage tests) leave it NULL */
+void OS_FreeRTOS_TaskCleanup(const void *tcb) __attribute__((weak));
+#endif
+
+#define OSAL_FREERTOS_TASK_CLEANUP(pxTCB)    \
+    do                                       \
+    {                                        \
+        if (OS_FreeRTOS_TaskCleanup != NULL) \
+        {                                    \
+            OS_FreeRTOS_TaskCleanup(pxTCB);  \
+        }                                    \
+    } while (0)
+
+#if defined(OSAL_FREERTOS_PORT_POSIX)
+#include "portmacro.h"
+#undef portCLEAN_UP_TCB
+#define portCLEAN_UP_TCB(pxTCB)            \
+    do                                     \
+    {                                      \
+        vPortCancelThread(pxTCB);          \
+        OSAL_FREERTOS_TASK_CLEANUP(pxTCB); \
+    } while (0)
+#else
+#define portCLEAN_UP_TCB(pxTCB) OSAL_FREERTOS_TASK_CLEANUP(pxTCB)
+#endif
+
 #endif /* FREERTOS_CONFIG_H */

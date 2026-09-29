@@ -2,8 +2,8 @@
  * File: FreeRTOS.h
  *
  * Purpose:
- *   Fake FreeRTOS.h for white-box coverage testing of freertos/src/os-impl-tasks.c.
- *   Declares only the types/macros that file actually uses - not a real port.
+ *   Fake FreeRTOS.h for white-box coverage testing of the freertos/src/os-impl-*.c
+ *   modules. Declares only the types/macros those files actually use - not a real port.
  */
 
 #ifndef FREERTOS_H
@@ -28,6 +28,10 @@ typedef struct
 
 #define pdTRUE  1
 #define pdFALSE 0
+#define pdPASS  pdTRUE
+#define pdFAIL  pdFALSE
+
+#define portMAX_DELAY (~(TickType_t)0)
 
 #define configMAX_PRIORITIES 7
 

@@ -20,3 +20,23 @@ void UT_TaskTest_SetImplTaskId(osal_index_t local_id, TaskHandle_t TaskId)
 {
     OS_impl_task_table[local_id].id = TaskId;
 }
+
+TaskHandle_t UT_TaskTest_GetImplTaskId(osal_index_t local_id)
+{
+    return OS_impl_task_table[local_id].id;
+}
+
+void *UT_TaskTest_GetImplTcb(osal_index_t local_id)
+{
+    return &OS_impl_task_table[local_id].tcb_buffer;
+}
+
+StackType_t *UT_TaskTest_GetImplStackBuffer(osal_index_t local_id)
+{
+    return OS_impl_task_table[local_id].stack_buffer;
+}
+
+void UT_TaskTest_SetImplStackBuffer(osal_index_t local_id, StackType_t *stack)
+{
+    OS_impl_task_table[local_id].stack_buffer = stack;
+}

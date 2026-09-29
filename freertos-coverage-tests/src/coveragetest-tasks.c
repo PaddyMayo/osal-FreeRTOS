@@ -16,11 +16,12 @@
  *   OS_FreeRTOSTaskEntry (the trampoline FreeRTOS would invoke when it
  *   actually runs a created task) is intentionally not exercised here: it
  *   only ever executes under a running scheduler, which this stub-based
- *   environment does not simulate. OS_PriorityRemap (the other static
+ *   environment does not simulate. OS_FreeRTOS_PriorityRemap (the other
  *   helper in that file) is covered indirectly through OS_TaskCreate_Impl
  *   and OS_TaskSetPriority_Impl, since both call it inline.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "utassert.h"
@@ -46,6 +47,8 @@ extern UBaseType_t            UT_Stub_LastCreatePriority;
 extern configSTACK_DEPTH_TYPE UT_Stub_LastCreateStackDepth;
 
 extern void UT_Stub_ResetTLS(void);
+
+extern void OS_FreeRTOS_TaskCleanup(const void *tcb);
 
 #define UT_TASK_TOKEN(idx)                                                                              \
     (OS_object_token_t)                                                                                 \
@@ -85,40 +88,54 @@ void Test_OS_TaskCreate_Impl(void)
     OS_task_table[0].stack_size = sizeof(StackType_t) * 128;
     OS_task_table[0].priority   = 50;
 
-    /* OSAL_TASK_STACK_ALLOCATE -> pvPortMalloc() path, success */
+    /* OSAL_TASK_STACK_ALLOCATE -> pvPortMalloc() path, success, stack owned by the port */
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
     UtAssert_StrCmp(UT_Stub_LastCreateName, "UnitTest", "task name passed through");
     UtAssert_UINT32_EQ(UT_Stub_LastCreateStackDepth, 128);
     UtAssert_STUB_COUNT(pvPortMalloc, 1);
     UtAssert_STUB_COUNT(xTaskCreateStatic, 1);
+    UtAssert_NOT_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
 
-    /* caller-supplied stack pointer -> no allocation, success */
+    /* slot's previous task not yet cleaned up by the kernel -> OS_ERROR, short-circuited */
+    UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
+    UtAssert_STUB_COUNT(pvPortMalloc, 1);
+    UtAssert_STUB_COUNT(xTaskCreateStatic, 1);
+
+    /* kernel cleanup frees the allocated stack and releases the slot */
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
+    UtAssert_STUB_COUNT(vPortFree, 1);
+
+    /* caller-supplied stack pointer -> no allocation, success, stack not owned by the port */
     OS_task_table[0].stack_pointer = (osal_stackptr_t)0x2000;
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
-    UtAssert_STUB_COUNT(pvPortMalloc, 1); /* unchanged - no allocation this time */
+    UtAssert_STUB_COUNT(pvPortMalloc, 1);
     UtAssert_STUB_COUNT(xTaskCreateStatic, 2);
+    UtAssert_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
+
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
+    UtAssert_STUB_COUNT(vPortFree, 1);
 
     /* pvPortMalloc() failure -> OS_ERROR, no xTaskCreateStatic() call */
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UT_SetDeferredRetcode(UT_KEY(pvPortMalloc), 1, -1);
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
     UtAssert_STUB_COUNT(pvPortMalloc, 2);
-    UtAssert_STUB_COUNT(xTaskCreateStatic, 2); /* unchanged - short-circuited */
+    UtAssert_STUB_COUNT(xTaskCreateStatic, 2);
 
     /* xTaskCreateStatic() failure with allocated stack -> OS_ERROR, freed */
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UT_SetDeferredRetcode(UT_KEY(xTaskCreateStatic), 1, -1);
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
-    UtAssert_STUB_COUNT(vPortFree, 1);
+    UtAssert_STUB_COUNT(vPortFree, 2);
+    UtAssert_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
 
     /* xTaskCreateStatic() failure with caller-supplied stack -> OS_ERROR, no
-     * additional free (count stays at 1 from the case above - it is
-     * cumulative across this whole test function, not reset per scenario) */
+     * additional free (vPortFree count is cumulative across this function) */
     OS_task_table[0].stack_pointer = (osal_stackptr_t)0x2000;
     UT_SetDeferredRetcode(UT_KEY(xTaskCreateStatic), 1, -1);
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
-    UtAssert_STUB_COUNT(vPortFree, 1);
+    UtAssert_STUB_COUNT(vPortFree, 2);
 }
 
 void Test_OS_TaskDetach_Impl(void)
@@ -134,8 +151,39 @@ void Test_OS_TaskDelete_Impl(void)
 
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
 
+    /* stack is freed by the kernel's portCLEAN_UP_TCB hook, not here */
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
     UtAssert_True(UT_Stub_LastDeletedHandle == (TaskHandle_t)0x4242, "vTaskDelete() called with task handle");
+    UtAssert_STUB_COUNT(vPortFree, 0);
+}
+
+void Test_OS_FreeRTOS_TaskCleanup(void)
+{
+    StaticTask_t other_tcb;
+
+    memset(&other_tcb, 0, sizeof(other_tcb));
+
+    /* port-allocated stack -> freed, slot released */
+    UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
+    UT_TaskTest_SetImplStackBuffer(UT_INDEX_0, malloc(sizeof(StackType_t) * 16));
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
+    UtAssert_STUB_COUNT(vPortFree, 1);
+    UtAssert_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
+    UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
+
+    /* caller-supplied stack -> nothing freed, slot released */
+    UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
+    UtAssert_STUB_COUNT(vPortFree, 1);
+    UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
+
+    /* TCB not in the task table (e.g. the idle task) -> record untouched */
+    UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
+    UT_TaskTest_SetImplStackBuffer(UT_INDEX_0, (StackType_t *)0x3000);
+    OS_FreeRTOS_TaskCleanup(&other_tcb);
+    UtAssert_STUB_COUNT(vPortFree, 1);
+    UtAssert_ADDRESS_EQ(UT_TaskTest_GetImplTaskId(UT_INDEX_0), 0x4242);
+    UtAssert_ADDRESS_EQ(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0), 0x3000);
 }
 
 void Test_OS_TaskExit_Impl(void)
@@ -238,6 +286,7 @@ void UtTest_Setup(void)
     ADD_TEST(OS_TaskCreate_Impl);
     ADD_TEST(OS_TaskDetach_Impl);
     ADD_TEST(OS_TaskDelete_Impl);
+    ADD_TEST(OS_FreeRTOS_TaskCleanup);
     ADD_TEST(OS_TaskExit_Impl);
     ADD_TEST(OS_TaskDelay_Impl);
     ADD_TEST(OS_TaskSetPriority_Impl);
