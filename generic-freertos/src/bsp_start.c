@@ -3,7 +3,7 @@
  *
  * Purpose:
  *   Host-independent FreeRTOS OSAL BSP entry point and support code, shared
- *   across every FreeRTOS host-specific BSP directory (e.g. generic-freertos-posix).
+ *   across every FreeRTOS host-specific BSP (e.g. the POSIX simulator port).
  *   Each consumer compiles this file itself against its own
  *   FreeRTOSConfigPlatform.h (see FreeRTOSPlatformContract.h), since some of
  *   the code below sizes static buffers from config values that legitimately
@@ -20,6 +20,19 @@
 
 #include "osapi-common.h"
 #include "bsp-impl.h"
+
+/*----------------------------------------------------------------
+   OS_BSP_StorageConfig
+
+   Pointer to the littlefs configuration for the BSP's storage device. The
+   storage source selected at build time (OSAL_FREERTOS_STORAGE_TARGET)
+   defines it, so the BSP does not know what the device looks like. The
+   pointer is valid for the life of the program and must not be modified.
+
+   The cache_size must not exceed OS_FREERTOS_LFS_FILE_CACHE_SIZE (see
+   freertos/inc/os-impl-filesys.h), which is what each open file reserves.
+ ------------------------------------------------------------------*/
+extern const struct lfs_config *const OS_BSP_StorageConfig;
 
 /*
  * Console output may be locked/unlocked from any FreeRTOS task, so a
