@@ -34,6 +34,7 @@ typedef struct
 #define portMAX_DELAY (~(TickType_t)0)
 
 #define configMAX_PRIORITIES 7
+#define configTICK_RATE_HZ   100
 
 #define pdMS_TO_TICKS(xTimeInMs) (xTimeInMs)
 

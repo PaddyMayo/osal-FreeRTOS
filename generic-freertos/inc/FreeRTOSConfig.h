@@ -1,7 +1,7 @@
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
-/* Platform setup, supplied by each BSP's inc directory */
+/* Platform setup, generated from each BSP's osal_freertos_platform() call */
 #include "FreeRTOSConfigPlatform.h"
 #include "FreeRTOSPlatformContract.h"
 
@@ -58,13 +58,17 @@
 #define configCHECK_FOR_STACK_OVERFLOW 2
 #define configUSE_TRACE_FACILITY       0
 #define configGENERATE_RUN_TIME_STATS  0
-#define configASSERT(x)                                               \
-    do                                                                \
-    {                                                                 \
-        if ((x) == 0)                                                 \
-        {                                                             \
-            OSAL_FREERTOS_PLATFORM_ASSERT_FAILED(__FILE__, __LINE__); \
-        }                                                             \
+#ifndef __ASSEMBLER__
+/* Reports the failure on the BSP console, then halts (generic-freertos/src/bsp_console.c) */
+void OS_FreeRTOS_AssertFailed(const char *File, int Line);
+#endif
+#define configASSERT(x)                                   \
+    do                                                    \
+    {                                                     \
+        if ((x) == 0)                                     \
+        {                                                 \
+            OS_FreeRTOS_AssertFailed(__FILE__, __LINE__); \
+        }                                                 \
     } while (0)
 
 /* Co-routines — unused, legacy FreeRTOS feature */

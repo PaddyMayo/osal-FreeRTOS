@@ -3,13 +3,17 @@
  *
  * Purpose:
  *   Minimal stand-ins for the pieces of OSAL's OS-agnostic shared layer
- *   (normally osapi-task.c, osapi-queue.c) that the freertos/src/os-impl-*.c
+ *   (normally osapi-common.c, osapi-task.c, osapi-queue.c) that the freertos/src/os-impl-*.c
  *   modules reference but these white-box tests do not otherwise link - just
  *   enough to satisfy the linker, not a functional reimplementation.
  */
 
+#include "os-shared-common.h"
 #include "os-shared-task.h"
 #include "os-shared-queue.h"
+
+/* Normally defined in osapi-common.c */
+OS_SharedGlobalVars_t OS_SharedGlobalVars;
 
 /*
  * Real storage normally lives in osapi-task.c, which this test does not
