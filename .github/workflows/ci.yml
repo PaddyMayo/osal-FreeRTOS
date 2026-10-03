@@ -6,7 +6,11 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/paddymayo/osal-freertos-dev:latest
     steps:
+      # Submodules are needed by the freertos-coverage hook, which configures
+      # and builds the coverage tests against third_party/osal.
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: pre-commit run --all-files
 
@@ -20,8 +24,6 @@ jobs:
           submodules: recursive
       - run: cmake -S . -B build
       - run: cmake --build build --target osal -j
-      - run: cmake --build build --target freertos_coverage_tests -j
-      - run: ctest --test-dir build -R '^coverage-freertos-' --output-on-failure
 
   post-check:
     runs-on: ubuntu-latest

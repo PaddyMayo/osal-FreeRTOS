@@ -21,11 +21,14 @@ OS_task_internal_record_t OS_task_table[OS_MAX_TASKS];
 OS_queue_internal_record_t OS_queue_table[OS_MAX_QUEUES];
 
 /*
- * OS_TaskEntryPoint() is only ever invoked by a running FreeRTOS scheduler
- * calling into OS_FreeRTOSTaskEntry(), which this stub-based environment
- * does not simulate - this definition exists only to satisfy the linker.
+ * Normally reached from a running FreeRTOS scheduler calling into
+ * OS_FreeRTOSTaskEntry(); coverage tests call that trampoline directly
+ * instead, and check the id it unwrapped via UT_Stub_LastEntryPointId.
+ * Unlike the real one, this returns.
  */
+osal_id_t UT_Stub_LastEntryPointId;
+
 void OS_TaskEntryPoint(osal_id_t global_task_id)
 {
-    (void)global_task_id;
+    UT_Stub_LastEntryPointId = global_task_id;
 }

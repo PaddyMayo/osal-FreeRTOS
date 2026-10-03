@@ -30,6 +30,8 @@ TaskHandle_t UT_Stub_LastPriorityHandle;
 UBaseType_t  UT_Stub_LastPriorityValue;
 TickType_t   UT_Stub_LastDelayTicks;
 
+TaskFunction_t         UT_Stub_LastCreateTaskCode;
+void                  *UT_Stub_LastCreateParameters;
 const char            *UT_Stub_LastCreateName;
 UBaseType_t            UT_Stub_LastCreatePriority;
 configSTACK_DEPTH_TYPE UT_Stub_LastCreateStackDepth;
@@ -58,10 +60,10 @@ TaskHandle_t xTaskCreateStatic(TaskFunction_t               pxTaskCode,
 {
     int32 status;
 
-    (void)pxTaskCode;
-    (void)pvParameters;
     (void)puxStackBuffer;
 
+    UT_Stub_LastCreateTaskCode   = pxTaskCode;
+    UT_Stub_LastCreateParameters = pvParameters;
     UT_Stub_LastCreateName       = pcName;
     UT_Stub_LastCreatePriority   = uxPriority;
     UT_Stub_LastCreateStackDepth = ulStackDepth;

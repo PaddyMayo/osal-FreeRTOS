@@ -13,12 +13,13 @@
  *   and effects are observed via return codes plus the fake FreeRTOS stub
  *   layer's captured call arguments and counts.
  *
- *   OS_FreeRTOSTaskEntry (the trampoline FreeRTOS would invoke when it
- *   actually runs a created task) is intentionally not exercised here: it
- *   only ever executes under a running scheduler, which this stub-based
- *   environment does not simulate. OS_FreeRTOS_PriorityRemap (the other
- *   helper in that file) is covered indirectly through OS_TaskCreate_Impl
- *   and OS_TaskSetPriority_Impl, since both call it inline.
+ *   OS_FreeRTOSTaskEntry (the static trampoline FreeRTOS invokes when it
+ *   actually runs a created task) is reached by calling the function
+ *   pointer OS_TaskCreate_Impl hands to the xTaskCreateStatic() stub, since
+ *   there is no running scheduler here to do it. OS_FreeRTOS_PriorityRemap
+ *   (the other helper in that file) is covered indirectly through
+ *   OS_TaskCreate_Impl and OS_TaskSetPriority_Impl, since both call it
+ *   inline.
  */
 
 #include <stdlib.h>
@@ -42,11 +43,16 @@ extern TaskHandle_t           UT_Stub_LastDeletedHandle;
 extern TaskHandle_t           UT_Stub_LastPriorityHandle;
 extern UBaseType_t            UT_Stub_LastPriorityValue;
 extern TickType_t             UT_Stub_LastDelayTicks;
+extern TaskFunction_t         UT_Stub_LastCreateTaskCode;
+extern void                  *UT_Stub_LastCreateParameters;
 extern const char            *UT_Stub_LastCreateName;
 extern UBaseType_t            UT_Stub_LastCreatePriority;
 extern configSTACK_DEPTH_TYPE UT_Stub_LastCreateStackDepth;
 
 extern void UT_Stub_ResetTLS(void);
+
+/* Captured OS_TaskEntryPoint() argument, declared in osal-shared-stubs.c */
+extern osal_id_t UT_Stub_LastEntryPointId;
 
 extern void OS_FreeRTOS_TaskCleanup(const void *tcb);
 
@@ -136,6 +142,21 @@ void Test_OS_TaskCreate_Impl(void)
     UT_SetDeferredRetcode(UT_KEY(xTaskCreateStatic), 1, -1);
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
     UtAssert_STUB_COUNT(vPortFree, 2);
+}
+
+void Test_OS_FreeRTOSTaskEntry(void)
+{
+    OS_object_token_t token = UT_TASK_TOKEN(0);
+
+    OS_task_table[0].stack_size    = sizeof(StackType_t) * 128;
+    OS_task_table[0].stack_pointer = (osal_stackptr_t)0x2000;
+    UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
+    UtAssert_NOT_NULL(UT_Stub_LastCreateTaskCode);
+
+    /* run the trampoline as the scheduler would -> OSAL task id unwrapped */
+    UT_Stub_LastEntryPointId = OS_OBJECT_ID_UNDEFINED;
+    UT_Stub_LastCreateTaskCode(UT_Stub_LastCreateParameters);
+    UtAssert_True(OS_ObjectIdEqual(UT_Stub_LastEntryPointId, token.obj_id), "OS_TaskEntryPoint() called with task id");
 }
 
 void Test_OS_TaskDetach_Impl(void)
@@ -284,6 +305,7 @@ void UtTest_Setup(void)
 {
     ADD_TEST(OS_TaskMatch_Impl);
     ADD_TEST(OS_TaskCreate_Impl);
+    ADD_TEST(OS_FreeRTOSTaskEntry);
     ADD_TEST(OS_TaskDetach_Impl);
     ADD_TEST(OS_TaskDelete_Impl);
     ADD_TEST(OS_FreeRTOS_TaskCleanup);

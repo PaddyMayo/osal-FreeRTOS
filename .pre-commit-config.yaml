@@ -12,3 +12,11 @@ repos:
         entry: cppcheck --enable=warning,style,performance,portability --error-exitcode=1 --suppress=missingIncludeSystem --inline-suppr
         language: system
         files: \.(c|h)$
+
+      - id: freertos-coverage
+        name: freertos coverage (gcov, 100% lines/branches)
+        entry: scripts/coverage.sh
+        language: system
+        pass_filenames: false
+        verbose: true
+        files: ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|scripts/coverage\.sh$)
