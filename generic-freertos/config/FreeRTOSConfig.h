@@ -3,7 +3,6 @@
 
 /* Platform setup, generated from each BSP's osal_freertos_platform() call */
 #include "FreeRTOSConfigPlatform.h"
-#include "FreeRTOSPlatformContract.h"
 
 /* Scheduling */
 #define configUSE_PREEMPTION                    1

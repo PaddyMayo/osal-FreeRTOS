@@ -1,0 +1,28 @@
+/*
+ * File: FreeRTOSConfigPlatform.h
+ *
+ * Purpose:
+ *   GENERATED from generic-freertos/config/FreeRTOSConfigPlatform.h.in by the
+ *   osal_freertos_platform() call in the @OSAL_SYSTEM_BSPTYPE@ BSP's
+ *   CMakeLists.txt - change that call, not this file. See
+ *   generic-freertos/config/osal_freertos_platform.cmake for the settings.
+ *   The shared FreeRTOSConfig.h only ever consumes the
+ *   OSAL_FREERTOS_PLATFORM_* macros defined here.
+ */
+
+#ifndef FREERTOS_CONFIG_PLATFORM_H
+#define FREERTOS_CONFIG_PLATFORM_H
+
+@PLATFORM_INCLUDES@
+#define OSAL_FREERTOS_PLATFORM_TICK_RATE_HZ             (@PLATFORM_TICK_RATE_HZ@)
+#define OSAL_FREERTOS_PLATFORM_MINIMAL_STACK_SIZE       (@PLATFORM_MINIMAL_STACK_SIZE@)
+#define OSAL_FREERTOS_PLATFORM_TOTAL_HEAP_SIZE          (@PLATFORM_TOTAL_HEAP_SIZE@)
+#define OSAL_FREERTOS_PLATFORM_OPTIMISED_TASK_SELECTION (@PLATFORM_OPTIMISED_TASK_SELECTION@)
+@PLATFORM_OPTIONAL_DEFINES@
+/* Marks OS_FreeRTOS_TaskCleanup weak in FreeRTOSConfig.h */
+#define OSAL_FREERTOS_PLATFORM_WEAK __attribute__((weak))
+
+/* The console backend generic-freertos/src/bsp_console.c is built on */
+#define OSAL_FREERTOS_PLATFORM_CONSOLE_BACKEND "console/@PLATFORM_CONSOLE@.h"
+
+#endif /* FREERTOS_CONFIG_PLATFORM_H */

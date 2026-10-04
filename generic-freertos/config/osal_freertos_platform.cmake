@@ -28,14 +28,14 @@
 #
 ##########################################################################
 
-set(OSAL_FREERTOS_GENERIC_DIR ${CMAKE_CURRENT_LIST_DIR})
+set(OSAL_FREERTOS_CONFIG_DIR ${CMAKE_CURRENT_LIST_DIR})
+get_filename_component(OSAL_FREERTOS_GENERIC_DIR ${OSAL_FREERTOS_CONFIG_DIR} DIRECTORY)
 
 function(osal_freertos_platform)
     set(required_keys PORT CONSOLE TICK_RATE_HZ MINIMAL_STACK_SIZE TOTAL_HEAP_SIZE)
-    set(optional_value_keys CPU_CLOCK_HZ KERNEL_INTERRUPT_PRIORITY MAX_SYSCALL_INTERRUPT_PRIORITY
-        OPTIMISED_TASK_SELECTION)
+    set(optional_value_keys CPU_CLOCK_HZ KERNEL_INTERRUPT_PRIORITY MAX_SYSCALL_INTERRUPT_PRIORITY)
     cmake_parse_arguments(PLATFORM ""
-        "${required_keys};${optional_value_keys};PORT_CLEAN_UP_TCB;LINKER_SCRIPT"
+        "${required_keys};${optional_value_keys};OPTIMISED_TASK_SELECTION;PORT_CLEAN_UP_TCB;LINKER_SCRIPT"
         "HEADERS;CONSOLE_DEFINES;SOURCES"
         ${ARGN})
 
@@ -44,17 +44,20 @@ function(osal_freertos_platform)
     endif ()
     foreach (key IN LISTS required_keys)
         if ("${PLATFORM_${key}}" STREQUAL "")
-            message(FATAL_ERROR "osal_freertos_platform: ${key} is required - see ${OSAL_FREERTOS_GENERIC_DIR}/osal_freertos_platform.cmake")
+            message(FATAL_ERROR "osal_freertos_platform: ${key} is required - see ${OSAL_FREERTOS_CONFIG_DIR}/osal_freertos_platform.cmake")
         endif ()
     endforeach ()
+    if ("${PLATFORM_OPTIMISED_TASK_SELECTION}" STREQUAL "")
+        set(PLATFORM_OPTIMISED_TASK_SELECTION 0)
+    endif ()
 
     set(console_backend ${OSAL_FREERTOS_GENERIC_DIR}/console/${PLATFORM_CONSOLE}.h)
     if (NOT EXISTS ${console_backend})
         message(FATAL_ERROR "osal_freertos_platform: no console backend '${PLATFORM_CONSOLE}' (expected ${console_backend})")
     endif ()
 
-    # Generated header: optional macros are emitted only when set, so the
-    # defaults in FreeRTOSPlatformContract.h apply otherwise
+    # Generated header: optional macros are emitted only when set, so
+    # FreeRTOSConfig.h tests them with defined()
     set(PLATFORM_INCLUDES "")
     foreach (header IN LISTS PLATFORM_HEADERS)
         string(APPEND PLATFORM_INCLUDES "#include <${header}>\n")
@@ -69,8 +72,8 @@ function(osal_freertos_platform)
         string(APPEND PLATFORM_OPTIONAL_DEFINES
             "#define OSAL_FREERTOS_PLATFORM_PORT_CLEAN_UP_TCB(pxTCB) ${PLATFORM_PORT_CLEAN_UP_TCB}\n")
     endif ()
-    configure_file(${OSAL_FREERTOS_GENERIC_DIR}/FreeRTOSConfigPlatform.h.in
-                   ${CMAKE_CURRENT_BINARY_DIR}/inc/FreeRTOSConfigPlatform.h @ONLY)
+    configure_file(${OSAL_FREERTOS_CONFIG_DIR}/FreeRTOSConfigPlatform.h.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/config/FreeRTOSConfigPlatform.h @ONLY)
 
     # The BSP is authoritative for the port, so this overrides any cached
     # value; it is read by the kernel's add_subdirectory, which comes later
@@ -78,8 +81,8 @@ function(osal_freertos_platform)
 
     add_library(freertos_config INTERFACE)
     target_include_directories(freertos_config SYSTEM INTERFACE
-        ${CMAKE_CURRENT_BINARY_DIR}/inc
-        ${OSAL_FREERTOS_GENERIC_DIR}/inc)
+        ${CMAKE_CURRENT_BINARY_DIR}/config
+        ${OSAL_FREERTOS_CONFIG_DIR})
 
     # The kernel links freertos_config, and osal_bsp links the kernel (see the
     # top-level CMakeLists.txt), so this reaches every executable using the BSP

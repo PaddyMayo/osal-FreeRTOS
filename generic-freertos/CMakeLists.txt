@@ -2,11 +2,11 @@
 #
 # "generic-freertos" BSP: FreeRTOS on the kernel's POSIX simulator port.
 # The whole platform is this one declaration - see
-# osal_freertos_platform.cmake in this directory for every setting.
+# config/osal_freertos_platform.cmake for every setting.
 #
 ##########################################################################
 
-include(${CMAKE_CURRENT_LIST_DIR}/osal_freertos_platform.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/config/osal_freertos_platform.cmake)
 
 osal_freertos_platform(
     PORT               GCC_POSIX
