@@ -23,7 +23,7 @@ if ! command -v gcovr >/dev/null 2>&1; then
   exit 1
 fi
 
-cmake -S . -B "$build_dir" >/dev/null
+cmake -S . -B "$build_dir" -C scripts/ci-posix-config.cmake >/dev/null
 cmake --build "$build_dir" --target freertos_coverage_tests -j
 find "$build_dir/freertos-coverage-tests" -name '*.gcda' -delete
 ctest --test-dir "$build_dir" -R '^coverage-freertos-' --output-on-failure

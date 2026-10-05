@@ -4,34 +4,44 @@
 /* Platform setup, generated from each BSP's osal_freertos_platform() call */
 #include "FreeRTOSConfigPlatform.h"
 
+/* The vendor's values arrive as OSAL_FREERTOS_* compile definitions */
+#ifndef OSAL_FREERTOS_TICK_RATE_HZ
+#error "OSAL_FREERTOS_TICK_RATE_HZ is not defined - set it in the -C config file"
+#endif
+#ifndef OSAL_FREERTOS_MINIMAL_STACK_SIZE
+#error "OSAL_FREERTOS_MINIMAL_STACK_SIZE is not defined - set it in the -C config file"
+#endif
+#ifndef OSAL_FREERTOS_TOTAL_HEAP_SIZE
+#error "OSAL_FREERTOS_TOTAL_HEAP_SIZE is not defined - set it in the -C config file"
+#endif
+
 /* Scheduling */
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION OSAL_FREERTOS_PLATFORM_OPTIMISED_TASK_SELECTION
 #define configUSE_TICKLESS_IDLE                 0
-#define configTICK_RATE_HZ                      OSAL_FREERTOS_PLATFORM_TICK_RATE_HZ
+#define configTICK_RATE_HZ                      OSAL_FREERTOS_TICK_RATE_HZ
 #define configMAX_PRIORITIES                    7
-#define configMINIMAL_STACK_SIZE                OSAL_FREERTOS_PLATFORM_MINIMAL_STACK_SIZE
+/* The vendor gives bytes; FreeRTOS counts words */
+#define configMINIMAL_STACK_SIZE                (OSAL_FREERTOS_MINIMAL_STACK_SIZE / sizeof(StackType_t))
 #define configMAX_TASK_NAME_LEN                 16
 #define configIDLE_SHOULD_YIELD                 1
 #define configUSE_16_BIT_TICKS                  0
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
-#if defined(OSAL_FREERTOS_PLATFORM_CPU_CLOCK_HZ)
-#define configCPU_CLOCK_HZ OSAL_FREERTOS_PLATFORM_CPU_CLOCK_HZ
+#if defined(OSAL_FREERTOS_PLATFORM_NEEDS_CPU_CLOCK)
+#define configCPU_CLOCK_HZ OSAL_FREERTOS_CPU_CLOCK_HZ
 #endif
 
 /* Interrupt priorities */
-#if defined(OSAL_FREERTOS_PLATFORM_KERNEL_INTERRUPT_PRIORITY)
-#define configKERNEL_INTERRUPT_PRIORITY OSAL_FREERTOS_PLATFORM_KERNEL_INTERRUPT_PRIORITY
-#endif
-#if defined(OSAL_FREERTOS_PLATFORM_MAX_SYSCALL_INTERRUPT_PRIORITY)
-#define configMAX_SYSCALL_INTERRUPT_PRIORITY OSAL_FREERTOS_PLATFORM_MAX_SYSCALL_INTERRUPT_PRIORITY
+#if defined(OSAL_FREERTOS_PLATFORM_HAS_INTERRUPT_PRIORITIES)
+#define configKERNEL_INTERRUPT_PRIORITY      OSAL_FREERTOS_KERNEL_INTERRUPT_PRIORITY
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY OSAL_FREERTOS_MAX_SYSCALL_INTERRUPT_PRIORITY
 #endif
 
 /* Memory allocation */
 #define configSUPPORT_STATIC_ALLOCATION  1
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
-#define configTOTAL_HEAP_SIZE            OSAL_FREERTOS_PLATFORM_TOTAL_HEAP_SIZE
+#define configTOTAL_HEAP_SIZE            OSAL_FREERTOS_TOTAL_HEAP_SIZE
 
 /* Synchronization primitives OSAL needs */
 #define configUSE_MUTEXES             1
@@ -106,17 +116,19 @@ OSAL_FREERTOS_PLATFORM_WEAK void OS_FreeRTOS_TaskCleanup(const void *tcb);
         }                                    \
     } while (0)
 
+/* A port whose portmacro.h defines portCLEAN_UP_TCB runs its own cleanup first */
 #if defined(OSAL_FREERTOS_PLATFORM_PORT_CLEAN_UP_TCB)
 #include "portmacro.h"
-#undef portCLEAN_UP_TCB
-#define portCLEAN_UP_TCB(pxTCB)                          \
+#define OSAL_FREERTOS_CLEAN_UP_TCB(pxTCB)                \
     do                                                   \
     {                                                    \
         OSAL_FREERTOS_PLATFORM_PORT_CLEAN_UP_TCB(pxTCB); \
         OSAL_FREERTOS_TASK_CLEANUP(pxTCB);               \
     } while (0)
+#undef portCLEAN_UP_TCB
 #else
-#define portCLEAN_UP_TCB(pxTCB) OSAL_FREERTOS_TASK_CLEANUP(pxTCB)
+#define OSAL_FREERTOS_CLEAN_UP_TCB(pxTCB) OSAL_FREERTOS_TASK_CLEANUP(pxTCB)
 #endif
+#define portCLEAN_UP_TCB(pxTCB) OSAL_FREERTOS_CLEAN_UP_TCB(pxTCB)
 
 #endif /* FREERTOS_CONFIG_H */
