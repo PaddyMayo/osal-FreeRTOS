@@ -3,25 +3,5 @@
 	"build": {
 		"dockerfile": "Dockerfile"
 	},
-	"mounts": [
-	    "source=/run/host-services/ssh-auth.sock,target=/run/host-services/ssh-auth.sock,type=bind",
-		"source=${localEnv:HOME}/.docker-shared/gitconfig,target=/home/vscode/.gitconfig,type=bind",
-		"source=${localEnv:HOME}/.docker-shared/gh-config,target=/home/vscode/.config/gh,type=bind"
- 	 ],
-	 "customizations": {
-    	"vscode": {
-			"extensions": [
-	  			"anthropic.claude-code",
-	  			"ms-azuretools.vscode-containers",
-	  			"ms-vscode-remote.remote-containers",
-	  			"github.vscode-github-actions",
-	  			"eamodio.gitlens",
-	  			"redhat.vscode-yaml"
-			]
-    	}
-  	},
-  	"containerEnv": {
-    	"SSH_AUTH_SOCK": "/run/host-services/ssh-auth.sock"
-  	},
-  	"postCreateCommand": "git submodule update --init --recursive && pre-commit install"
+	"postCreateCommand": "git submodule update --init --recursive && pre-commit install"
 }
