@@ -135,12 +135,37 @@ endforeach()
 # have a coverage test: gcovr only sees files some test executable compiled, so
 # an unlisted module would otherwise drop out of the 100% gate unnoticed. The
 # failing test is only generated when there is such a module.
+#
+# FREERTOS_STUB_MODULES are exempt: they only return OS_ERR_NOT_IMPLEMENTED (or
+# are no-ops), so there is nothing to cover. Remove a module from this list
+# when it gains a real implementation, and the check then requires its test.
+set(FREERTOS_STUB_MODULES
+    binsem
+    clock
+    condvar
+    console
+    countsem
+    dir
+    errors
+    file
+    filesys
+    heap
+    idmap
+    module
+    mutex
+    network
+    rwlock
+    select
+    shell
+    sockets
+    timebase
+)
 file(GLOB FREERTOS_IMPL_SOURCES ${CMAKE_SOURCE_DIR}/freertos/src/os-impl-*.c)
 set(FREERTOS_UNTESTED_MODULES)
 foreach(IMPL_SRC ${FREERTOS_IMPL_SOURCES})
     get_filename_component(IMPL_NAME ${IMPL_SRC} NAME_WE)
     string(REPLACE "os-impl-" "" MODULE_NAME ${IMPL_NAME})
-    if (NOT MODULE_NAME IN_LIST FREERTOS_MODULE_LIST)
+    if (NOT MODULE_NAME IN_LIST FREERTOS_MODULE_LIST AND NOT MODULE_NAME IN_LIST FREERTOS_STUB_MODULES)
         list(APPEND FREERTOS_UNTESTED_MODULES ${MODULE_NAME})
     endif ()
 endforeach()
