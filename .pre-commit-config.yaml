@@ -18,10 +18,10 @@ repos:
       # (100% lines and branches). Hooks run in this order.
       - id: freertos-coverage-configure
         name: freertos coverage - configure
-        entry: cmake -S . -B build -C scripts/ci-posix-config.cmake
+        entry: cmake -S . -B build -C examples/posix-config.cmake
         language: system
         pass_filenames: false
-        files: &freertos_coverage_files ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|scripts/ci-posix-config\.cmake$)
+        files: &freertos_coverage_files ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|examples/posix-config\.cmake$)
 
       - id: freertos-coverage-build
         name: freertos coverage - build tests
