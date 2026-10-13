@@ -3,14 +3,15 @@
  *
  * Purpose:
  *   Minimal stand-ins for the pieces of OSAL's OS-agnostic shared layer
- *   (normally osapi-common.c, osapi-task.c, osapi-queue.c) that the freertos/src/os-impl-*.c
+ *   (normally osapi-common.c, osapi-task.c) that the freertos/src/os-impl-*.c
  *   modules reference but these white-box tests do not otherwise link - just
  *   enough to satisfy the linker, not a functional reimplementation.
+ *   Modules listed in FREERTOS_OSAL_STUB_MODULES (../CMakeLists.txt) skip this
+ *   file and link OSAL's own ut_osapi_*_stubs instead.
  */
 
 #include "os-shared-common.h"
 #include "os-shared-task.h"
-#include "os-shared-queue.h"
 
 /* Normally defined in osapi-common.c */
 OS_SharedGlobalVars_t OS_SharedGlobalVars;
@@ -20,9 +21,6 @@ OS_SharedGlobalVars_t OS_SharedGlobalVars;
  * link (it exercises os-impl-tasks.c in isolation).
  */
 OS_task_internal_record_t OS_task_table[OS_MAX_TASKS];
-
-/* Likewise, normally defined in osapi-queue.c */
-OS_queue_internal_record_t OS_queue_table[OS_MAX_QUEUES];
 
 /*
  * Normally reached from a running FreeRTOS scheduler calling into

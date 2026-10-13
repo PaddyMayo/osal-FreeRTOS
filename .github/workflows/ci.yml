@@ -6,8 +6,8 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/paddymayo/osal-freertos-dev:latest
     steps:
-      # Submodules are needed by the freertos-coverage hook, which configures
-      # and builds the coverage tests against third_party/osal.
+      # Submodules are needed by the freertos-coverage hooks, which configure
+      # and build the coverage tests against third_party/osal.
       - uses: actions/checkout@v4
         with:
           submodules: recursive
