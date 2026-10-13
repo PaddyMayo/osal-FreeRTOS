@@ -130,3 +130,24 @@ foreach(MODULE_NAME ${FREERTOS_MODULE_LIST})
     add_test(NAME coverage-freertos-${MODULE_NAME} COMMAND ${TESTRUNNER_TARGET})
     add_dependencies(freertos_coverage_tests ${TESTRUNNER_TARGET})
 endforeach()
+
+# Every freertos/src/os-impl-<module>.c must be in FREERTOS_MODULE_LIST, and so
+# have a coverage test: gcovr only sees files some test executable compiled, so
+# an unlisted module would otherwise drop out of the 100% gate unnoticed. The
+# failing test is only generated when there is such a module.
+file(GLOB FREERTOS_IMPL_SOURCES ${CMAKE_SOURCE_DIR}/freertos/src/os-impl-*.c)
+set(FREERTOS_UNTESTED_MODULES)
+foreach(IMPL_SRC ${FREERTOS_IMPL_SOURCES})
+    get_filename_component(IMPL_NAME ${IMPL_SRC} NAME_WE)
+    string(REPLACE "os-impl-" "" MODULE_NAME ${IMPL_NAME})
+    if (NOT MODULE_NAME IN_LIST FREERTOS_MODULE_LIST)
+        list(APPEND FREERTOS_UNTESTED_MODULES ${MODULE_NAME})
+    endif ()
+endforeach()
+
+if (FREERTOS_UNTESTED_MODULES)
+    list(JOIN FREERTOS_UNTESTED_MODULES " " FREERTOS_UNTESTED_MODULES_TEXT)
+    add_test(NAME coverage-freertos-module-list
+        COMMAND sh -c "echo 'No white-box coverage test for: ${FREERTOS_UNTESTED_MODULES_TEXT}. Add freertos-coverage-tests/src/coveragetest-<module>.c and name each in FREERTOS_MODULE_LIST.' >&2; exit 1"
+    )
+endif ()

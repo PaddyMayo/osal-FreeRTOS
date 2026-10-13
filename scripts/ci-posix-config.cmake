@@ -1,4 +1,4 @@
-# Vendor config for the GCC_POSIX build that CI and scripts/coverage.sh run:
+# Vendor config for the GCC_POSIX build that CI and the freertos-coverage pre-commit hooks run:
 #   cmake -S . -B build -C scripts/ci-posix-config.cmake
 set(PORT GCC_POSIX CACHE STRING "" FORCE)
 
