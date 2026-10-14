@@ -3,6 +3,7 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git ca-certificates curl \
         clang-format cppcheck \
+        gcc-arm-none-eabi libnewlib-arm-none-eabi \
         python3-pip \
     && pip3 install --no-cache-dir --break-system-packages pre-commit gcovr \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
