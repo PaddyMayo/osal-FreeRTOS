@@ -1,6 +1,12 @@
 # Vendor config for the GCC_ARM_CM3 build that CI runs:
-#   cmake -S . -B build -C platforms/cortex-m3/config.cmake -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake -DENABLE_UNIT_TESTS=OFF
+#   cmake -S . -B build -C platforms/cortex-m3/config.cmake -DENABLE_UNIT_TESTS=OFF
 set(PORT GCC_ARM_CM3 CACHE STRING "" FORCE)
+
+# Cross compile for a bare-metal Arm target. No startup code or linker script
+# exists at compiler-check time, so the compiler check builds a static library.
+set(CMAKE_SYSTEM_NAME               Generic           CACHE STRING "" FORCE)
+set(CMAKE_C_COMPILER                arm-none-eabi-gcc CACHE STRING "" FORCE)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE   STATIC_LIBRARY    CACHE STRING "" FORCE)
 
 set(CMAKE_C_FLAGS "-mcpu=cortex-m3 -mthumb" CACHE STRING "" FORCE)
 
