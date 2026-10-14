@@ -52,3 +52,42 @@ repos:
         pass_filenames: false
         verbose: true
         files: *freertos_coverage_files
+      # Cross-compile the osal library for each Cortex-M platform, so the
+      # ARM-only code (e.g. the halt path in bsp_console.c) is always built.
+      # Each platform gets its own build-<platform>/ directory. Host tests do
+      # not run on these, so ENABLE_UNIT_TESTS is off.
+      - id: freertos-cross-cortex-m0
+        name: freertos cross build - cortex-m0
+        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        args: [cortex-m0]
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|cmake/|CMakeLists\.txt$)
+      - id: freertos-cross-cortex-m3
+        name: freertos cross build - cortex-m3
+        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        args: [cortex-m3]
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|cmake/|CMakeLists\.txt$)
+      - id: freertos-cross-cortex-m4f
+        name: freertos cross build - cortex-m4f
+        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        args: [cortex-m4f]
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|cmake/|CMakeLists\.txt$)
+      - id: freertos-cross-cortex-m7
+        name: freertos cross build - cortex-m7
+        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        args: [cortex-m7]
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|cmake/|CMakeLists\.txt$)
+      - id: freertos-cross-cortex-m33
+        name: freertos cross build - cortex-m33
+        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        args: [cortex-m33]
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|cmake/|CMakeLists\.txt$)
