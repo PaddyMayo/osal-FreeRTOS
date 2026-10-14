@@ -18,14 +18,14 @@ repos:
       # (100% lines and branches). Hooks run in this order.
       - id: freertos-coverage-configure
         name: freertos coverage - configure
-        entry: cmake -S . -B build -C platforms/posix/config.cmake
+        entry: cmake -S . -B build-posix -C platforms/posix/config.cmake
         language: system
         pass_filenames: false
         files: &freertos_coverage_files ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|platforms/)
 
       - id: freertos-coverage-build
         name: freertos coverage - build tests
-        entry: cmake --build build --target freertos_coverage_tests -j
+        entry: cmake --build build-posix --target freertos_coverage_tests -j
         language: system
         pass_filenames: false
         files: *freertos_coverage_files
@@ -33,21 +33,21 @@ repos:
       # Stale counters from earlier runs would hide a test that stopped covering.
       - id: freertos-coverage-clean
         name: freertos coverage - clear old counters
-        entry: find build/freertos-coverage-tests -name '*.gcda' -delete
+        entry: find build-posix/freertos-coverage-tests -name '*.gcda' -delete
         language: system
         pass_filenames: false
         files: *freertos_coverage_files
 
       - id: freertos-coverage-test
         name: freertos coverage - run tests
-        entry: ctest --test-dir build -R '^coverage-freertos-' --output-on-failure
+        entry: ctest --test-dir build-posix -R '^coverage-freertos-' --output-on-failure
         language: system
         pass_filenames: false
         files: *freertos_coverage_files
 
       - id: freertos-coverage-gate
         name: freertos coverage - gcov, 100% lines/branches
-        entry: gcovr build/freertos-coverage-tests
+        entry: gcovr build-posix/freertos-coverage-tests
         language: system
         pass_filenames: false
         verbose: true

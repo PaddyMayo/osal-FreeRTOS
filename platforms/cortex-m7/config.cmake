@@ -1,5 +1,5 @@
 # Vendor config for the GCC_ARM_CM7 build that CI runs:
-#   cmake -S . -B build -C platforms/cortex-m7/config.cmake -DENABLE_UNIT_TESTS=OFF
+#   cmake -S . -B build-cortex-m7 -C platforms/cortex-m7/config.cmake -DENABLE_UNIT_TESTS=OFF
 set(PORT GCC_ARM_CM7 CACHE STRING "" FORCE)
 
 # Cross compile for a bare-metal Arm target. No startup code or linker script

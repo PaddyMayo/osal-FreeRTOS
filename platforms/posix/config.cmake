@@ -1,5 +1,5 @@
 # Vendor config for the GCC_POSIX host build that CI and the freertos-coverage pre-commit hooks run:
-#   cmake -S . -B build -C platforms/posix/config.cmake
+#   cmake -S . -B build-posix -C platforms/posix/config.cmake
 set(PORT GCC_POSIX CACHE STRING "" FORCE)
 
 # The minimal stack size is left to GCC_POSIX's default (PTHREAD_STACK_MIN)
