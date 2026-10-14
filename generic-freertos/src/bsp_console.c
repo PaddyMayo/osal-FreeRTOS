@@ -5,8 +5,12 @@
  *   OSAL BSP debug console implementation, shared across every FreeRTOS
  *   BSP.
  *
- *   TODO: no console backend yet, every function below is a template.
+ *   TODO: no console backend yet, OS_BSP_ConsoleOutput_Impl and
+ *   OS_BSP_ConsoleSetMode_Impl are templates.
  */
+
+#include <stdbool.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 
@@ -25,18 +29,108 @@ void OS_BSP_ConsoleOutput_Impl(const char *Str, size_t DataLen)
    OS_BSP_ConsoleSetMode_Impl
    See full description in header
  ------------------------------------------------------------------*/
-void OS_BSP_ConsoleSetMode_Impl(uint32 ModeBits)
-{
+void OS_BSP_ConsoleSetMode_Impl(uint32 ModeBits) {
     /* TODO: console color/attribute control, if the console supports it */
+}
+
+/*----------------------------------------------------------------
+   OS_BSP_MaskAllInterrupts
+
+   Stops every maskable interrupt (on a POSIX host, every signal) on the
+   calling CPU/thread, and is never undone. taskDISABLE_INTERRUPTS() is not
+   used because each FreeRTOS port defines it differently: the ARMv7-M and
+   later ports only raise BASEPRI, which leaves higher-priority interrupts
+   running.
+
+   An architecture not listed here fails the build, so a port can never
+   silently mask less than the others. NMI and HardFault cannot be masked on
+   any ARM core: the halt loop cannot cause a HardFault, and each ARM
+   platform should point both vectors at a spin loop in its startup code.
+ ------------------------------------------------------------------*/
+#if defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_8M_BASE__) \
+    || defined(__ARM_ARCH_8M_MAIN__) || defined(__ARM_ARCH_8_1M_MAIN__)
+
+static inline void OS_BSP_MaskAllInterrupts(void)
+{
+    /* PRIMASK masks every configurable interrupt, whatever its priority */
+    __asm volatile("cpsid i" ::: "memory");
+}
+
+#elif defined(__unix__) || defined(__linux__)
+
+#include <pthread.h>
+#include <signal.h>
+
+static inline void OS_BSP_MaskAllInterrupts(void)
+{
+    sigset_t AllSignals;
+
+    /* The GCC_POSIX port's tick is SIGALRM, so blocking every signal on this thread stops it */
+    (void)sigfillset(&AllSignals);
+    (void)pthread_sigmask(SIG_BLOCK, &AllSignals, NULL);
+}
+
+#else
+#error "OS_BSP_MaskAllInterrupts: unsupported architecture"
+#endif
+
+/*----------------------------------------------------------------
+   OS_BSP_ReportString / OS_BSP_ReportNumber
+
+   Write to the console through OS_BSP_ConsoleOutput_Impl only: no
+   OS_printf, no console lock and no heap, since the assert handler can run
+   from an ISR, a critical section or the middle of a semaphore operation.
+ ------------------------------------------------------------------*/
+static inline void OS_BSP_ReportString(const char *Str)
+{
+    OS_BSP_ConsoleOutput_Impl(Str, strlen(Str));
+}
+
+static inline void OS_BSP_ReportNumber(int Number)
+{
+    char         Digits[11];
+    size_t       Pos   = sizeof(Digits);
+    unsigned int Value = (Number < 0) ? 0U : (unsigned int)Number;
+
+    do
+    {
+        Pos--;
+        Digits[Pos]  = (char)('0' + (Value % 10U));
+        Value       /= 10U;
+    } while (Value != 0U);
+
+    OS_BSP_ConsoleOutput_Impl(&Digits[Pos], sizeof(Digits) - Pos);
 }
 
 /*----------------------------------------------------------------
    OS_FreeRTOS_AssertFailed
 
-   Called by configASSERT (see FreeRTOSConfig.h). May run from an ISR or a
-   critical section.
+   Called by configASSERT (see FreeRTOSConfig.h). Masks interrupts, reports
+   File:Line and halts. Never returns.
+
+   TODO: untested. The masking branches (each ARM architecture and POSIX), the
+   reported text and the recursion guard need a testing strategy that covers
+   every supported target, not only a POSIX host.
  ------------------------------------------------------------------*/
 void OS_FreeRTOS_AssertFailed(const char *File, int Line)
 {
-    /* TODO: report File:Line on the console, then halt the platform */
+    /* Set before reporting: an assert raised while reporting skips straight to the halt */
+    static volatile bool AssertActive = false;
+
+    OS_BSP_MaskAllInterrupts();
+
+    if (!AssertActive)
+    {
+        AssertActive = true;
+
+        OS_BSP_ReportString("ASSERT ");
+        OS_BSP_ReportString(File);
+        OS_BSP_ReportString(":");
+        OS_BSP_ReportNumber(Line);
+        OS_BSP_ReportString("\n");
+    }
+
+    for (;;)
+    {
+    }
 }
