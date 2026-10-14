@@ -37,6 +37,9 @@ extern const struct lfs_config *const OS_BSP_StorageConfig;
 /* Reports the overflowing task and halts, never returns (bsp_console.c) */
 void OS_FreeRTOS_StackOverflow(const char *TaskName);
 
+/* Reports the exit status and halts, never returns (bsp_console.c) */
+void OS_FreeRTOS_ApplicationExit(int Status);
+
 /*
  * Console output may be locked/unlocked from any FreeRTOS task, so a
  * statically-allocated mutex is used (avoids relying on the heap, and is
@@ -99,12 +102,33 @@ static int OS_BSP_GetReturnStatus(void)
 }
 
 /*----------------------------------------------------------------
+   OS_BSP_Exit
+
+    Ends the application. A port that implements vPortEndScheduler (the
+    GCC_POSIX port, which returns control to main()) ends the scheduler.
+    Every other port has nothing to return to (the Cortex-M ports assert in
+    vPortEndScheduler), so it reports the status and halts. A port says it can
+    end the scheduler through OSAL_FREERTOS_PORT_ENDS_SCHEDULER, defined per
+    port in generic-freertos/config/CMakeLists.txt.
+ ------------------------------------------------------------------*/
+static inline void OS_BSP_Exit(int Status)
+{
+#if defined(OSAL_FREERTOS_PORT_ENDS_SCHEDULER)
+    (void)Status;
+
+    vTaskEndScheduler();
+#else
+    OS_FreeRTOS_ApplicationExit(Status);
+#endif
+}
+
+/*----------------------------------------------------------------
    OS_BSP_Shutdown_Impl
    See full description in header
  ------------------------------------------------------------------*/
 void OS_BSP_Shutdown_Impl(void)
 {
-    vTaskEndScheduler();
+    OS_BSP_Exit(OS_BSP_GetReturnStatus());
 }
 
 /*----------------------------------------------------------------
@@ -181,8 +205,8 @@ static void OS_BSP_StartupTask(void *pvParameters)
      */
     OS_Application_Run();
 
-    /* Should typically never get here */
-    vTaskEndScheduler();
+    /* The application has finished */
+    OS_BSP_Shutdown_Impl();
 }
 
 /******************************************************************************

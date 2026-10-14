@@ -8,7 +8,9 @@
 #
 #   CORE_CLOCK                  the port takes OSAL_FREERTOS_CPU_CLOCK_HZ
 #   INTERRUPT_PRIORITIES        the port takes the two interrupt priority keys
-#   PORT_DEFINES                NAME=VALUE pairs the port's portmacro.h requires
+#   PORT_DEFINES                NAME=VALUE pairs the port's portmacro.h requires, and
+#                               OSAL_FREERTOS_PORT_ENDS_SCHEDULER=1 for a port that implements
+#                               vPortEndScheduler (a port without it halts when the application ends)
 #   PORT_CLEAN_UP_TCB           cleanup function taking the TCB as void *
 #   HEADER                      system header the port's values need
 #   DEFAULT_MINIMAL_STACK_SIZE  stack size when the config file sets none

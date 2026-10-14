@@ -36,8 +36,9 @@ SemaphoreHandle_t  UT_Stub_LastTakeSem;
 TickType_t         UT_Stub_LastTakeTicks;
 SemaphoreHandle_t  UT_Stub_LastGiveSem;
 
-/* Captured OS_FreeRTOS_StackOverflow argument */
+/* Captured OS_FreeRTOS_StackOverflow and OS_FreeRTOS_ApplicationExit arguments */
 const char *UT_Stub_LastOverflowTask;
+int         UT_Stub_LastExitStatus;
 
 /* Whether vTaskStartScheduler() runs the startup task (a started scheduler) or returns at once */
 bool UT_Stub_SchedulerStarts = true;
@@ -113,6 +114,13 @@ void OS_FreeRTOS_StackOverflow(const char *TaskName)
     UT_Stub_LastOverflowTask = TaskName;
 
     UT_DEFAULT_IMPL(OS_FreeRTOS_StackOverflow);
+}
+
+void OS_FreeRTOS_ApplicationExit(int Status)
+{
+    UT_Stub_LastExitStatus = Status;
+
+    UT_DEFAULT_IMPL(OS_FreeRTOS_ApplicationExit);
 }
 
 void OS_Application_Startup(void)

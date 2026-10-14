@@ -149,16 +149,25 @@ set(BSP_COMMON_SOURCES ${FREERTOS_COVERAGE_COMMON_SOURCES})
 list(REMOVE_ITEM BSP_COMMON_SOURCES stubs/osal-shared-stubs.c)
 list(APPEND BSP_COMMON_SOURCES ${OSAL_REAL_SOURCE_DIR}/src/bsp/shared/src/osapi-bsp.c)
 
-foreach(BSP_NAME ${FREERTOS_BSP_FILE_LIST})
+# Builds one test executable for a BSP file. VARIANT, when not empty, is added to
+# the target and test names and the remaining arguments are extra compile
+# definitions for that build, so one file can be tested in more than one
+# configuration.
+function(freertos_add_bsp_coverage_test BSP_NAME VARIANT)
     set(BSP_SRC ${CMAKE_SOURCE_DIR}/generic-freertos/src/bsp_${BSP_NAME}.c)
     set(BSP_COVERAGETEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/coveragetest-bsp-${BSP_NAME}.c)
     foreach(REQUIRED_SRC ${BSP_SRC} ${BSP_COVERAGETEST_SRC})
         if (NOT EXISTS ${REQUIRED_SRC})
-            message(FATAL_ERROR "FREERTOS_BSP_FILE_LIST names ${BSP_NAME}, but ${REQUIRED_SRC} does not exist")
+            message(FATAL_ERROR "BSP file ${BSP_NAME} is tested, but ${REQUIRED_SRC} does not exist")
         endif ()
     endforeach()
 
-    set(BSP_TESTRUNNER_TARGET coverage-bsp-${BSP_NAME}-testrunner)
+    if (VARIANT)
+        set(BSP_TEST_NAME bsp-${BSP_NAME}-${VARIANT})
+    else ()
+        set(BSP_TEST_NAME bsp-${BSP_NAME})
+    endif ()
+    set(BSP_TESTRUNNER_TARGET coverage-${BSP_TEST_NAME}-testrunner)
     set(BSP_SOURCES ${BSP_COMMON_SOURCES} ${BSP_COVERAGETEST_SRC} ${BSP_SRC})
 
     set(BSP_STUB ${CMAKE_CURRENT_SOURCE_DIR}/stubs/freertos-bsp-${BSP_NAME}-stubs.c)
@@ -174,14 +183,25 @@ foreach(BSP_NAME ${FREERTOS_BSP_FILE_LIST})
         ${FREERTOS_COVERAGE_INCLUDES}
         ${OSAL_REAL_SOURCE_DIR}/src/bsp/shared/inc
     )
-    target_compile_definitions(${BSP_TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_")
+    target_compile_definitions(${BSP_TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_" ${ARGN})
     target_compile_options(${BSP_TESTRUNNER_TARGET} PRIVATE --coverage)
     target_link_options(${BSP_TESTRUNNER_TARGET} PRIVATE --coverage)
 
     # Named coverage-freertos-* so the freertos-coverage-test hook (ctest -R '^coverage-freertos-') runs it
-    add_test(NAME coverage-freertos-bsp-${BSP_NAME} COMMAND ${BSP_TESTRUNNER_TARGET})
+    add_test(NAME coverage-freertos-${BSP_TEST_NAME} COMMAND ${BSP_TESTRUNNER_TARGET})
     add_dependencies(freertos_coverage_tests ${BSP_TESTRUNNER_TARGET})
+endfunction()
+
+# The default build is the GCC_POSIX port, which implements vPortEndScheduler and
+# says so with OSAL_FREERTOS_PORT_ENDS_SCHEDULER (generic-freertos/config/CMakeLists.txt).
+foreach(BSP_NAME ${FREERTOS_BSP_FILE_LIST})
+    freertos_add_bsp_coverage_test(${BSP_NAME} "" OSAL_FREERTOS_PORT_ENDS_SCHEDULER=1)
 endforeach()
+
+# Ports that cannot end the scheduler (the Cortex-M ports assert in
+# vPortEndScheduler) leave that define out and halt when the application ends.
+# bsp_start.c is built a second time without it to test that branch.
+freertos_add_bsp_coverage_test(start halt)
 
 # Every freertos/src/os-impl-<module>.c must be in FREERTOS_MODULE_LIST, and so
 # have a coverage test: gcovr only sees files some test executable compiled, so

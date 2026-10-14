@@ -29,7 +29,8 @@ void OS_BSP_ConsoleOutput_Impl(const char *Str, size_t DataLen)
    OS_BSP_ConsoleSetMode_Impl
    See full description in header
  ------------------------------------------------------------------*/
-void OS_BSP_ConsoleSetMode_Impl(uint32 ModeBits) {
+void OS_BSP_ConsoleSetMode_Impl(uint32 ModeBits)
+{
     /* TODO: console color/attribute control, if the console supports it */
 }
 
@@ -42,13 +43,14 @@ void OS_BSP_ConsoleSetMode_Impl(uint32 ModeBits) {
    later ports only raise BASEPRI, which leaves higher-priority interrupts
    running.
 
-   An architecture not listed here fails the build, so a port can never
-   silently mask less than the others. NMI and HardFault cannot be masked on
-   any ARM core: the halt loop cannot cause a HardFault, and each ARM
-   platform should point both vectors at a spin loop in its startup code.
+   The port's family comes from the macro it names in
+   generic-freertos/config/CMakeLists.txt. A port that names neither family
+   fails the build, so a port can never silently mask less than the others.
+   NMI and HardFault cannot be masked on any ARM core: the halt loop cannot
+   cause a HardFault, and each ARM platform should point both vectors at a
+   spin loop in its startup code.
  ------------------------------------------------------------------*/
-#if defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7EM__) || defined(__ARM_ARCH_8M_BASE__) \
-    || defined(__ARM_ARCH_8M_MAIN__) || defined(__ARM_ARCH_8_1M_MAIN__)
+#if defined(OSAL_FREERTOS_PORT_CORTEX_M)
 
 static inline void OS_BSP_MaskAllInterrupts(void)
 {
@@ -56,7 +58,7 @@ static inline void OS_BSP_MaskAllInterrupts(void)
     __asm volatile("cpsid i" ::: "memory");
 }
 
-#elif defined(__unix__) || defined(__linux__)
+#elif defined(OSAL_FREERTOS_PORT_POSIX)
 
 #include <pthread.h>
 #include <signal.h>
@@ -169,6 +171,28 @@ void OS_FreeRTOS_StackOverflow(const char *TaskName)
     {
         OS_BSP_ReportString("STACK OVERFLOW ");
         OS_BSP_ReportString(TaskName);
+        OS_BSP_ReportString("\n");
+    }
+
+    OS_BSP_Halt();
+}
+
+/*----------------------------------------------------------------
+   OS_FreeRTOS_ApplicationExit
+
+   Called by OS_BSP_Shutdown_Impl (bsp_start.c) on ports that cannot end the
+   scheduler (the Cortex-M ports assert in vPortEndScheduler), so there is
+   nothing to return to. Masks interrupts, reports the exit status (already
+   translated to 0..127) and halts. Never returns.
+
+   TODO: untested, see OS_FreeRTOS_AssertFailed.
+ ------------------------------------------------------------------*/
+void OS_FreeRTOS_ApplicationExit(int Status)
+{
+    if (OS_BSP_BeginHalt())
+    {
+        OS_BSP_ReportString("APPLICATION EXIT ");
+        OS_BSP_ReportNumber(Status);
         OS_BSP_ReportString("\n");
     }
 
