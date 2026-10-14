@@ -11,7 +11,8 @@
  *   vTaskStartScheduler() runs the startup task, so each case sees the exit
  *   status main() would hand back to the OS: success after a normal shutdown,
  *   the application's own status when it set one, and failure when the
- *   scheduler never starts or a task overflows its stack.
+ *   scheduler never starts. A stack overflow halts instead of returning, so
+ *   the hook is checked for what it calls rather than for an exit status.
  */
 
 #include <stdlib.h>
@@ -40,6 +41,9 @@ void vApplicationGetTimerTaskMemory(StaticTask_t          **ppxTimerTaskTCBBuffe
                                     configSTACK_DEPTH_TYPE *puxTimerTaskStackSize);
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName);
 
+/* Halts in bsp_console.c; stubbed in ../stubs/freertos-bsp-start-stubs.c */
+void OS_FreeRTOS_StackOverflow(const char *TaskName);
+
 /* Captured stub call arguments and controls, declared in freertos-bsp-start-stubs.c */
 extern TaskFunction_t         UT_Stub_StartupTask;
 extern const char            *UT_Stub_LastCreateName;
@@ -50,6 +54,7 @@ extern SemaphoreHandle_t      UT_Stub_LastTakeSem;
 extern TickType_t             UT_Stub_LastTakeTicks;
 extern SemaphoreHandle_t      UT_Stub_LastGiveSem;
 extern bool                   UT_Stub_SchedulerStarts;
+extern const char            *UT_Stub_LastOverflowTask;
 
 /* The status the application sets from inside OS_Application_Run() */
 static int32 AppExitCode;
@@ -134,16 +139,24 @@ void Test_Main_TaskCreateFails(void)
 
 void Test_StackOverflowHook(void)
 {
-    /* a stack overflow ends the scheduler with a failure status... */
+    /*
+     * The kernel calls the hook from inside its task switch, so it must halt
+     * through OS_FreeRTOS_StackOverflow and leave the scheduler alone: ending it
+     * there would delete the idle task the switch is about to pick from.
+     */
     vApplicationStackOverflowHook(NULL, "task");
-    UtAssert_INT32_EQ(OS_BSP_Global.AppStatus, OS_ERROR);
-    UtAssert_STUB_COUNT(vTaskEndScheduler, 1);
 
-    /* ...but never replaces a status the application already chose */
-    OS_BSP_Global.AppStatus = 7;
-    vApplicationStackOverflowHook(NULL, "task");
-    UtAssert_INT32_EQ(OS_BSP_Global.AppStatus, 7);
-    UtAssert_STUB_COUNT(vTaskEndScheduler, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_StackOverflow, 1);
+    UtAssert_True(strcmp(UT_Stub_LastOverflowTask, "task") == 0, "overflowing task reported by name");
+    UtAssert_STUB_COUNT(vTaskEndScheduler, 0);
+    UtAssert_INT32_EQ(OS_BSP_Global.AppStatus, OS_SUCCESS);
+}
+
+void Test_Shutdown_Impl(void)
+{
+    OS_BSP_Shutdown_Impl();
+
+    UtAssert_STUB_COUNT(vTaskEndScheduler, 1);
 }
 
 void Test_Lock_Unlock(void)
@@ -212,6 +225,7 @@ void UtTest_Setup(void)
     ADD_TEST(Main_SchedulerFailsToStart);
     ADD_TEST(Main_TaskCreateFails);
     ADD_TEST(StackOverflowHook);
+    ADD_TEST(Shutdown_Impl);
     ADD_TEST(Lock_Unlock);
     ADD_TEST(StaticAllocationHooks);
 }

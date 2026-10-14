@@ -36,6 +36,9 @@ SemaphoreHandle_t  UT_Stub_LastTakeSem;
 TickType_t         UT_Stub_LastTakeTicks;
 SemaphoreHandle_t  UT_Stub_LastGiveSem;
 
+/* Captured OS_FreeRTOS_StackOverflow argument */
+const char *UT_Stub_LastOverflowTask;
+
 /* Whether vTaskStartScheduler() runs the startup task (a started scheduler) or returns at once */
 bool UT_Stub_SchedulerStarts = true;
 
@@ -102,6 +105,14 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t xSemaphore)
     UT_DEFAULT_IMPL(xSemaphoreGive);
 
     return pdTRUE;
+}
+
+/* The real one (bsp_console.c) halts and never returns; this one records the call and returns */
+void OS_FreeRTOS_StackOverflow(const char *TaskName)
+{
+    UT_Stub_LastOverflowTask = TaskName;
+
+    UT_DEFAULT_IMPL(OS_FreeRTOS_StackOverflow);
 }
 
 void OS_Application_Startup(void)

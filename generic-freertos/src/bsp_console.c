@@ -103,6 +103,34 @@ static inline void OS_BSP_ReportNumber(int Number)
 }
 
 /*----------------------------------------------------------------
+   OS_BSP_BeginHalt / OS_BSP_Halt
+
+   Shared by every fatal path. BeginHalt masks interrupts and reports whether
+   this is the first fatal error: one raised while reporting another skips the
+   report and goes straight to Halt, so the halt is always reached. The flag is
+   set before anything is reported.
+ ------------------------------------------------------------------*/
+static inline bool OS_BSP_BeginHalt(void)
+{
+    static volatile bool Halting = false;
+    bool                 First;
+
+    OS_BSP_MaskAllInterrupts();
+
+    First   = !Halting;
+    Halting = true;
+
+    return First;
+}
+
+static inline void OS_BSP_Halt(void)
+{
+    for (;;)
+    {
+    }
+}
+
+/*----------------------------------------------------------------
    OS_FreeRTOS_AssertFailed
 
    Called by configASSERT (see FreeRTOSConfig.h). Masks interrupts, reports
@@ -114,15 +142,8 @@ static inline void OS_BSP_ReportNumber(int Number)
  ------------------------------------------------------------------*/
 void OS_FreeRTOS_AssertFailed(const char *File, int Line)
 {
-    /* Set before reporting: an assert raised while reporting skips straight to the halt */
-    static volatile bool AssertActive = false;
-
-    OS_BSP_MaskAllInterrupts();
-
-    if (!AssertActive)
+    if (OS_BSP_BeginHalt())
     {
-        AssertActive = true;
-
         OS_BSP_ReportString("ASSERT ");
         OS_BSP_ReportString(File);
         OS_BSP_ReportString(":");
@@ -130,7 +151,26 @@ void OS_FreeRTOS_AssertFailed(const char *File, int Line)
         OS_BSP_ReportString("\n");
     }
 
-    for (;;)
+    OS_BSP_Halt();
+}
+
+/*----------------------------------------------------------------
+   OS_FreeRTOS_StackOverflow
+
+   Called by vApplicationStackOverflowHook (bsp_start.c), which the kernel
+   calls from inside its task switch. The kernel's state cannot be changed
+   there, so it masks interrupts, reports the task and halts. Never returns.
+
+   TODO: untested, see OS_FreeRTOS_AssertFailed.
+ ------------------------------------------------------------------*/
+void OS_FreeRTOS_StackOverflow(const char *TaskName)
+{
+    if (OS_BSP_BeginHalt())
     {
+        OS_BSP_ReportString("STACK OVERFLOW ");
+        OS_BSP_ReportString(TaskName);
+        OS_BSP_ReportString("\n");
     }
+
+    OS_BSP_Halt();
 }

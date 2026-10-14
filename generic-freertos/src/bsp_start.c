@@ -34,6 +34,9 @@
  ------------------------------------------------------------------*/
 extern const struct lfs_config *const OS_BSP_StorageConfig;
 
+/* Reports the overflowing task and halts, never returns (bsp_console.c) */
+void OS_FreeRTOS_StackOverflow(const char *TaskName);
+
 /*
  * Console output may be locked/unlocked from any FreeRTOS task, so a
  * statically-allocated mutex is used (avoids relying on the heap, and is
@@ -96,20 +99,6 @@ static int OS_BSP_GetReturnStatus(void)
 }
 
 /*----------------------------------------------------------------
-   OS_BSP_SetFailureStatus
-
-    Marks the exit status as failed, unless the application has already
-    chosen a status of its own through OS_BSP_SetExitCode().
- ------------------------------------------------------------------*/
-static void OS_BSP_SetFailureStatus(void)
-{
-    if (OS_BSP_Global.AppStatus == OS_SUCCESS)
-    {
-        OS_BSP_SetExitCode(OS_ERROR);
-    }
-}
-
-/*----------------------------------------------------------------
    OS_BSP_Shutdown_Impl
    See full description in header
  ------------------------------------------------------------------*/
@@ -150,13 +139,18 @@ void vApplicationGetTimerTaskMemory(StaticTask_t          **ppxTimerTaskTCBBuffe
     *puxTimerTaskStackSize   = configTIMER_TASK_STACK_DEPTH;
 }
 
+/*
+ * The kernel calls this from inside its task switch, with the scheduler's lists
+ * in use, so it must not change kernel state: vTaskEndScheduler() there would
+ * delete the idle task the switch is about to pick from. It halts instead.
+ */
+// pcTaskName must stay non-const to match the kernel's declaration of this hook
+// cppcheck-suppress constParameterPointer
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 {
     (void)xTask;
-    (void)pcTaskName;
 
-    OS_BSP_SetFailureStatus();
-    OS_BSP_Shutdown_Impl();
+    OS_FreeRTOS_StackOverflow(pcTaskName);
 }
 
 /*----------------------------------------------------------------
@@ -240,12 +234,12 @@ int main(int argc, char *argv[])
     /*
      * Only reached if the scheduler could not start (e.g. insufficient heap
      * for the idle/timer tasks), or if it was ended after running. Failing to
-     * start is an error exit; an ended scheduler keeps the status the
-     * application set, with stack overflow already marked a failure by its hook.
+     * start is an error exit, and no application ran to set a status of its own;
+     * an ended scheduler keeps the status the application set.
      */
     if (!OS_BSP_SchedulerRan)
     {
-        OS_BSP_SetFailureStatus();
+        OS_BSP_SetExitCode(OS_ERROR);
     }
 
     return OS_BSP_GetReturnStatus();
