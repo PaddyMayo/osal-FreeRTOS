@@ -28,11 +28,14 @@ typedef struct
 
 SemaphoreHandle_t OCS_xSemaphoreCreateBinaryStatic(StaticSemaphore_t *pxSemaphoreBuffer);
 
+SemaphoreHandle_t OCS_xSemaphoreCreateMutexStatic(StaticSemaphore_t *pxMutexBuffer);
+
 BaseType_t OCS_xSemaphoreTake(SemaphoreHandle_t xSemaphore, TickType_t xBlockTime);
 
 BaseType_t OCS_xSemaphoreGive(SemaphoreHandle_t xSemaphore);
 
 #define xSemaphoreCreateBinaryStatic OCS_xSemaphoreCreateBinaryStatic
+#define xSemaphoreCreateMutexStatic  OCS_xSemaphoreCreateMutexStatic
 #define xSemaphoreTake               OCS_xSemaphoreTake
 #define xSemaphoreGive               OCS_xSemaphoreGive
 

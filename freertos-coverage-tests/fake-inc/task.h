@@ -30,6 +30,17 @@ TaskHandle_t OCS_xTaskCreateStatic(TaskFunction_t               pxTaskCode,
                                    StackType_t *const           puxStackBuffer,
                                    StaticTask_t *const          pxTaskBuffer);
 
+BaseType_t OCS_xTaskCreate(TaskFunction_t               pxTaskCode,
+                           const char *const            pcName,
+                           const configSTACK_DEPTH_TYPE uxStackDepth,
+                           void *const                  pvParameters,
+                           UBaseType_t                  uxPriority,
+                           TaskHandle_t *const          pxCreatedTask);
+
+void OCS_vTaskStartScheduler(void);
+
+void OCS_vTaskEndScheduler(void);
+
 void OCS_vTaskDelete(TaskHandle_t xTaskToDelete);
 
 void OCS_vTaskDelay(TickType_t xTicksToDelay);
@@ -42,6 +53,9 @@ void OCS_vTaskSetThreadLocalStoragePointer(TaskHandle_t xTaskToSet, int xIndex, 
 
 #define xTaskGetCurrentTaskHandle          OCS_xTaskGetCurrentTaskHandle
 #define xTaskCreateStatic                  OCS_xTaskCreateStatic
+#define xTaskCreate                        OCS_xTaskCreate
+#define vTaskStartScheduler                OCS_vTaskStartScheduler
+#define vTaskEndScheduler                  OCS_vTaskEndScheduler
 #define vTaskDelete                        OCS_vTaskDelete
 #define vTaskDelay                         OCS_vTaskDelay
 #define vTaskPrioritySet                   OCS_vTaskPrioritySet

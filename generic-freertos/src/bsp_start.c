@@ -42,6 +42,13 @@ extern const struct lfs_config *const OS_BSP_StorageConfig;
 static StaticSemaphore_t OS_BSP_ConsoleMutexBuffer;
 static SemaphoreHandle_t OS_BSP_ConsoleMutex;
 
+/*
+ * Set by OS_BSP_StartupTask, which only runs once the scheduler is up. If
+ * vTaskStartScheduler() returns with this still false, the scheduler never
+ * started.
+ */
+static volatile bool OS_BSP_SchedulerRan = false;
+
 /*----------------------------------------------------------------
    OS_BSP_Lock_Impl
    See full description in header
@@ -86,6 +93,20 @@ static int OS_BSP_GetReturnStatus(void)
     }
 
     return retcode;
+}
+
+/*----------------------------------------------------------------
+   OS_BSP_SetFailureStatus
+
+    Marks the exit status as failed, unless the application has already
+    chosen a status of its own through OS_BSP_SetExitCode().
+ ------------------------------------------------------------------*/
+static void OS_BSP_SetFailureStatus(void)
+{
+    if (OS_BSP_Global.AppStatus == OS_SUCCESS)
+    {
+        OS_BSP_SetExitCode(OS_ERROR);
+    }
 }
 
 /*----------------------------------------------------------------
@@ -134,6 +155,7 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
     (void)xTask;
     (void)pcTaskName;
 
+    OS_BSP_SetFailureStatus();
     OS_BSP_Shutdown_Impl();
 }
 
@@ -149,6 +171,9 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 // cppcheck-suppress constParameterCallback
 static void OS_BSP_StartupTask(void *pvParameters)
 {
+    /* This task only runs once the scheduler is up, see OS_BSP_SchedulerRan */
+    OS_BSP_SchedulerRan = true;
+
     /*
      * Call application specific entry point.
      * This should set up all user tasks and resources, then return
@@ -183,6 +208,7 @@ int main(int argc, char *argv[])
      * Initially clear the global objects
      */
     memset(&OS_BSP_Global, 0, sizeof(OS_BSP_Global));
+    OS_BSP_SchedulerRan = false;
 
     /*
      * Save the argc/argv arguments for future use.
@@ -213,7 +239,14 @@ int main(int argc, char *argv[])
 
     /*
      * Only reached if the scheduler could not start (e.g. insufficient heap
-     * for the idle/timer tasks), or if OS_BSP_Shutdown_Impl() ended it.
+     * for the idle/timer tasks), or if it was ended after running. Failing to
+     * start is an error exit; an ended scheduler keeps the status the
+     * application set, with stack overflow already marked a failure by its hook.
      */
+    if (!OS_BSP_SchedulerRan)
+    {
+        OS_BSP_SetFailureStatus();
+    }
+
     return OS_BSP_GetReturnStatus();
 }
