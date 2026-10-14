@@ -131,6 +131,58 @@ foreach(MODULE_NAME ${FREERTOS_MODULE_LIST})
     add_dependencies(freertos_coverage_tests ${TESTRUNNER_TARGET})
 endforeach()
 
+# The BSP's files (generic-freertos/src/bsp_<name>.c) are not os-impl modules,
+# so they sit outside FREERTOS_MODULE_LIST and follow the same pattern from
+# their own list: each entry needs src/coveragetest-bsp-<name>.c, and may add
+# stubs/freertos-bsp-<name>-stubs.c. bsp_console.c is not listed yet: it has no
+# tests (see the TODO on OS_FreeRTOS_AssertFailed).
+#
+# The real file is compiled against the same fake FreeRTOS headers, with the
+# common sources that do not need the OSAL shared layer, plus OSAL's own
+# bsp/shared osapi-bsp.c for OS_BSP_Global and OS_BSP_SetExitCode. A file's
+# main() is built as OS_BSP_TestMain, so it does not collide with src/main.c.
+set(FREERTOS_BSP_FILE_LIST
+    start
+)
+
+set(BSP_COMMON_SOURCES ${FREERTOS_COVERAGE_COMMON_SOURCES})
+list(REMOVE_ITEM BSP_COMMON_SOURCES stubs/osal-shared-stubs.c)
+list(APPEND BSP_COMMON_SOURCES ${OSAL_REAL_SOURCE_DIR}/src/bsp/shared/src/osapi-bsp.c)
+
+foreach(BSP_NAME ${FREERTOS_BSP_FILE_LIST})
+    set(BSP_SRC ${CMAKE_SOURCE_DIR}/generic-freertos/src/bsp_${BSP_NAME}.c)
+    set(BSP_COVERAGETEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/coveragetest-bsp-${BSP_NAME}.c)
+    foreach(REQUIRED_SRC ${BSP_SRC} ${BSP_COVERAGETEST_SRC})
+        if (NOT EXISTS ${REQUIRED_SRC})
+            message(FATAL_ERROR "FREERTOS_BSP_FILE_LIST names ${BSP_NAME}, but ${REQUIRED_SRC} does not exist")
+        endif ()
+    endforeach()
+
+    set(BSP_TESTRUNNER_TARGET coverage-bsp-${BSP_NAME}-testrunner)
+    set(BSP_SOURCES ${BSP_COMMON_SOURCES} ${BSP_COVERAGETEST_SRC} ${BSP_SRC})
+
+    set(BSP_STUB ${CMAKE_CURRENT_SOURCE_DIR}/stubs/freertos-bsp-${BSP_NAME}-stubs.c)
+    if (EXISTS ${BSP_STUB})
+        list(APPEND BSP_SOURCES ${BSP_STUB})
+    endif ()
+
+    set_source_files_properties(${BSP_SRC} PROPERTIES COMPILE_DEFINITIONS "main=OS_BSP_TestMain")
+
+    add_executable(${BSP_TESTRUNNER_TARGET} ${BSP_SOURCES})
+    target_include_directories(${BSP_TESTRUNNER_TARGET} BEFORE PRIVATE fake-inc)
+    target_include_directories(${BSP_TESTRUNNER_TARGET} PRIVATE
+        ${FREERTOS_COVERAGE_INCLUDES}
+        ${OSAL_REAL_SOURCE_DIR}/src/bsp/shared/inc
+    )
+    target_compile_definitions(${BSP_TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_")
+    target_compile_options(${BSP_TESTRUNNER_TARGET} PRIVATE --coverage)
+    target_link_options(${BSP_TESTRUNNER_TARGET} PRIVATE --coverage)
+
+    # Named coverage-freertos-* so the freertos-coverage-test hook (ctest -R '^coverage-freertos-') runs it
+    add_test(NAME coverage-freertos-bsp-${BSP_NAME} COMMAND ${BSP_TESTRUNNER_TARGET})
+    add_dependencies(freertos_coverage_tests ${BSP_TESTRUNNER_TARGET})
+endforeach()
+
 # Every freertos/src/os-impl-<module>.c must be in FREERTOS_MODULE_LIST, and so
 # have a coverage test: gcovr only sees files some test executable compiled, so
 # an unlisted module would otherwise drop out of the 100% gate unnoticed. The
