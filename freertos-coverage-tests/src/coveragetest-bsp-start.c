@@ -41,8 +41,9 @@ void vApplicationGetTimerTaskMemory(StaticTask_t          **ppxTimerTaskTCBBuffe
                                     configSTACK_DEPTH_TYPE *puxTimerTaskStackSize);
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName);
 
-/* Halts in bsp_console.c; stubbed in ../stubs/freertos-bsp-start-stubs.c */
+/* Halt in bsp_console.c; stubbed in ../stubs/freertos-bsp-start-stubs.c */
 void OS_FreeRTOS_StackOverflow(const char *TaskName);
+void OS_FreeRTOS_ApplicationExit(int Status);
 
 /* Captured stub call arguments and controls, declared in freertos-bsp-start-stubs.c */
 extern TaskFunction_t         UT_Stub_StartupTask;
@@ -55,9 +56,31 @@ extern TickType_t             UT_Stub_LastTakeTicks;
 extern SemaphoreHandle_t      UT_Stub_LastGiveSem;
 extern bool                   UT_Stub_SchedulerStarts;
 extern const char            *UT_Stub_LastOverflowTask;
+extern int                    UT_Stub_LastExitStatus;
 
 /* The status the application sets from inside OS_Application_Run() */
 static int32 AppExitCode;
+
+/*
+ * How the application ends depends on the port. One that implements
+ * vPortEndScheduler defines OSAL_FREERTOS_PORT_ENDS_SCHEDULER and the BSP ends
+ * the scheduler; one that does not (the Cortex-M ports) leaves it undefined and
+ * the BSP reports the translated exit status and halts instead. Either way,
+ * Count is how many times the application has ended so far.
+ */
+static void AssertAppEnded(uint32 Count, int Status)
+{
+#ifdef OSAL_FREERTOS_PORT_ENDS_SCHEDULER
+    (void)Status;
+
+    UtAssert_STUB_COUNT(vTaskEndScheduler, Count);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_ApplicationExit, 0);
+#else
+    UtAssert_STUB_COUNT(OS_FreeRTOS_ApplicationExit, Count);
+    UtAssert_INT32_EQ(UT_Stub_LastExitStatus, Status);
+    UtAssert_STUB_COUNT(vTaskEndScheduler, 0);
+#endif
+}
 
 static int32 SetAppExitCodeHook(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
 {
@@ -93,7 +116,7 @@ void Test_Main_NormalShutdown(void)
     UtAssert_STUB_COUNT(vTaskStartScheduler, 1);
     UtAssert_STUB_COUNT(OS_Application_Startup, 1);
     UtAssert_STUB_COUNT(OS_Application_Run, 1);
-    UtAssert_STUB_COUNT(vTaskEndScheduler, 1);
+    AssertAppEnded(1, EXIT_SUCCESS);
     UtAssert_INT32_EQ(OS_BSP_Global.AppStatus, OS_SUCCESS);
 }
 
@@ -104,13 +127,16 @@ void Test_Main_AppExitStatus(void)
 
     AppExitCode = 7;
     UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), 7);
+    AssertAppEnded(1, 7);
 
     AppExitCode = OS_ERROR;
     UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), EXIT_FAILURE);
+    AssertAppEnded(2, EXIT_FAILURE);
 
     /* only the low 7 bits pass through */
     AppExitCode = 0x85;
     UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), 0x05);
+    AssertAppEnded(3, 0x05);
 }
 
 void Test_Main_SchedulerFailsToStart(void)
@@ -123,7 +149,7 @@ void Test_Main_SchedulerFailsToStart(void)
     UtAssert_STUB_COUNT(vTaskStartScheduler, 1);
     UtAssert_STUB_COUNT(OS_Application_Startup, 0);
     UtAssert_STUB_COUNT(OS_Application_Run, 0);
-    UtAssert_STUB_COUNT(vTaskEndScheduler, 0);
+    AssertAppEnded(0, 0);
     UtAssert_INT32_EQ(OS_BSP_Global.AppStatus, OS_ERROR);
 }
 
@@ -148,15 +174,18 @@ void Test_StackOverflowHook(void)
 
     UtAssert_STUB_COUNT(OS_FreeRTOS_StackOverflow, 1);
     UtAssert_True(strcmp(UT_Stub_LastOverflowTask, "task") == 0, "overflowing task reported by name");
-    UtAssert_STUB_COUNT(vTaskEndScheduler, 0);
+    AssertAppEnded(0, 0);
     UtAssert_INT32_EQ(OS_BSP_Global.AppStatus, OS_SUCCESS);
 }
 
 void Test_Shutdown_Impl(void)
 {
+    /* the status handed to the exit is the translated one the application set */
+    OS_BSP_SetExitCode(3);
+
     OS_BSP_Shutdown_Impl();
 
-    UtAssert_STUB_COUNT(vTaskEndScheduler, 1);
+    AssertAppEnded(1, 3);
 }
 
 void Test_Lock_Unlock(void)
@@ -209,6 +238,7 @@ void Osapi_Test_Setup(void)
     UT_Stub_LastTakeTicks         = 0;
     UT_Stub_LastGiveSem           = NULL;
     UT_Stub_SchedulerStarts       = true;
+    UT_Stub_LastExitStatus        = 0;
     AppExitCode                   = 0;
 }
 
