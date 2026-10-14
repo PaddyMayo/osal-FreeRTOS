@@ -1,5 +1,5 @@
 # Vendor config for the GCC_ARM_CM4F build that CI runs:
-#   cmake -S . -B build-cortex-m4f -C platforms/cortex-m4f/config.cmake -DENABLE_UNIT_TESTS=OFF
+#   cmake -S . -B build/cortex-m4f -C platforms/cortex-m4f/config.cmake -DENABLE_UNIT_TESTS=OFF
 set(PORT GCC_ARM_CM4F CACHE STRING "" FORCE)
 
 # Cross compile for a bare-metal Arm target. No startup code or linker script

@@ -18,14 +18,14 @@ repos:
       # (100% lines and branches). Hooks run in this order.
       - id: freertos-coverage-configure
         name: freertos coverage - configure
-        entry: cmake -S . -B build-posix -C platforms/posix/config.cmake
+        entry: cmake -S . -B build/posix -C platforms/posix/config.cmake
         language: system
         pass_filenames: false
         files: &freertos_coverage_files ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|platforms/)
 
       - id: freertos-coverage-build
         name: freertos coverage - build tests
-        entry: cmake --build build-posix --target freertos_coverage_tests -j
+        entry: cmake --build build/posix --target freertos_coverage_tests -j
         language: system
         pass_filenames: false
         files: *freertos_coverage_files
@@ -33,60 +33,60 @@ repos:
       # Stale counters from earlier runs would hide a test that stopped covering.
       - id: freertos-coverage-clean
         name: freertos coverage - clear old counters
-        entry: find build-posix/freertos-coverage-tests -name '*.gcda' -delete
+        entry: find build/posix/freertos-coverage-tests -name '*.gcda' -delete
         language: system
         pass_filenames: false
         files: *freertos_coverage_files
 
       - id: freertos-coverage-test
         name: freertos coverage - run tests
-        entry: ctest --test-dir build-posix -R '^coverage-freertos-' --output-on-failure
+        entry: ctest --test-dir build/posix -R '^coverage-freertos-' --output-on-failure
         language: system
         pass_filenames: false
         files: *freertos_coverage_files
 
       - id: freertos-coverage-gate
         name: freertos coverage - gcov, 100% lines/branches
-        entry: gcovr build-posix/freertos-coverage-tests
+        entry: gcovr build/posix/freertos-coverage-tests
         language: system
         pass_filenames: false
         verbose: true
         files: *freertos_coverage_files
       # Cross-compile the osal library for each Cortex-M platform, so the
       # ARM-only code (e.g. the halt path in bsp_console.c) is always built.
-      # Each platform gets its own build-<platform>/ directory. Host tests do
+      # Each platform gets its own build/<platform>/ directory. Host tests do
       # not run on these, so ENABLE_UNIT_TESTS is off.
       - id: freertos-cross-cortex-m0
         name: freertos cross build - cortex-m0
-        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
         args: [cortex-m0]
         language: system
         pass_filenames: false
         files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
       - id: freertos-cross-cortex-m3
         name: freertos cross build - cortex-m3
-        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
         args: [cortex-m3]
         language: system
         pass_filenames: false
         files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
       - id: freertos-cross-cortex-m4f
         name: freertos cross build - cortex-m4f
-        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
         args: [cortex-m4f]
         language: system
         pass_filenames: false
         files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
       - id: freertos-cross-cortex-m7
         name: freertos cross build - cortex-m7
-        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
         args: [cortex-m7]
         language: system
         pass_filenames: false
         files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
       - id: freertos-cross-cortex-m33
         name: freertos cross build - cortex-m33
-        entry: bash -c 'cmake -S . -B build-$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build-$0 --target osal -j'
+        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
         args: [cortex-m33]
         language: system
         pass_filenames: false

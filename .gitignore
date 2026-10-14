@@ -56,7 +56,6 @@ dkms.conf
 
 # Build output — everything comes from out-of-source builds into build/
 build/
-build-*/
 cmake-build-*/
 
 # CMake in-source-configure guard — shouldn't appear if you always use
