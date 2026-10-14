@@ -46,15 +46,6 @@ elseif ("${PORT}" MATCHES "^GCC_ARM_(CM23|CM33|CM35P|CM52|CM55|CM85)_NTZ_NONSECU
         PORT_DEFINES configENABLE_FPU=0 configENABLE_MPU=0 configENABLE_MVE=0 configENABLE_TRUSTZONE=0
     )
 
-# ARMv8-M with TrustZone, non-secure side: the port frees the secure context on task delete
-elseif ("${PORT}" MATCHES "^GCC_ARM_(CM23|CM33|CM35P|CM52|CM55|CM85)_NONSECURE$")
-    osal_freertos_platform(
-        CORE_CLOCK
-        INTERRUPT_PRIORITIES
-        PORT_DEFINES configENABLE_FPU=0 configENABLE_MPU=0 configENABLE_MVE=0 configENABLE_TRUSTZONE=1
-        PORT_CLEAN_UP_TCB vPortFreeSecureContext
-    )
-
 else ()
     message(FATAL_ERROR "Unsupported PORT=${PORT}")
 endif ()
