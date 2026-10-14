@@ -58,10 +58,17 @@ static inline void OS_BSP_MaskAllInterrupts(void)
     __asm volatile("cpsid i" ::: "memory");
 }
 
+static inline void OS_BSP_HaltWait(void)
+{
+    /* Sleeps the core until an event; returns at once if an interrupt is already pending */
+    __asm volatile("wfi" ::: "memory");
+}
+
 #elif defined(OSAL_FREERTOS_PORT_POSIX)
 
 #include <pthread.h>
 #include <signal.h>
+#include <unistd.h>
 
 static inline void OS_BSP_MaskAllInterrupts(void)
 {
@@ -70,6 +77,12 @@ static inline void OS_BSP_MaskAllInterrupts(void)
     /* The GCC_POSIX port's tick is SIGALRM, so blocking every signal on this thread stops it */
     (void)sigfillset(&AllSignals);
     (void)pthread_sigmask(SIG_BLOCK, &AllSignals, NULL);
+}
+
+static inline void OS_BSP_HaltWait(void)
+{
+    /* Every signal is blocked on this thread, so this sleeps until the process is killed */
+    (void)pause();
 }
 
 #else
@@ -110,7 +123,8 @@ static inline void OS_BSP_ReportNumber(int Number)
    Shared by every fatal path. BeginHalt masks interrupts and reports whether
    this is the first fatal error: one raised while reporting another skips the
    report and goes straight to Halt, so the halt is always reached. The flag is
-   set before anything is reported.
+   set before anything is reported. Halt never returns, but sleeps through
+   OS_BSP_HaltWait instead of spinning, so a halted system does not use the CPU.
  ------------------------------------------------------------------*/
 static inline bool OS_BSP_BeginHalt(void)
 {
@@ -129,6 +143,7 @@ static inline void OS_BSP_Halt(void)
 {
     for (;;)
     {
+        OS_BSP_HaltWait();
     }
 }
 
