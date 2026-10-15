@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git ca-certificates curl \
         clang-format cppcheck \
         gcc-arm-none-eabi libnewlib-arm-none-eabi \
-        gcc-aarch64-linux-gnu libc6-arm64-cross \
+        gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
         qemu-system-arm qemu-user gdb-multiarch \
         python3-pip \
     && pip3 install --no-cache-dir --break-system-packages --ignore-installed packaging pre-commit gcovr \
