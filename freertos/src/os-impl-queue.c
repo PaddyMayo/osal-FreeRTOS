@@ -18,6 +18,7 @@
 #include "os-shared-idmap.h"
 
 #include "os-impl-queue.h"
+#include "os-impl-tasks.h"
 
 OS_impl_queue_internal_record_t OS_impl_queue_table[OS_MAX_QUEUES];
 
@@ -97,7 +98,7 @@ int32 OS_QueueGet_Impl(const OS_object_token_t *token, void *data, size_t size, 
     }
     else
     {
-        ticks = pdMS_TO_TICKS(timeout);
+        ticks = OS_FreeRTOS_MsToTicks(timeout);
     }
 
     if (xQueueReceive(impl->id, data, ticks) != pdPASS)

@@ -38,7 +38,8 @@ typedef struct
 #define configMINIMAL_STACK_SIZE     64
 #define configTIMER_TASK_STACK_DEPTH (configMINIMAL_STACK_SIZE * 2)
 
-#define pdMS_TO_TICKS(xTimeInMs) (xTimeInMs)
+/* Truncates like the real one, which is what OS_FreeRTOS_MsToTicks() compensates for */
+#define pdMS_TO_TICKS(xTimeInMs) ((TickType_t)(((unsigned long long)(xTimeInMs) * configTICK_RATE_HZ) / 1000U))
 
 /*
  * Declared under an OCS_ prefix and redirected via #define - see task.h for

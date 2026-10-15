@@ -37,6 +37,22 @@ TickType_t    UT_Stub_LastReceiveTicks;
 static unsigned char UT_Stub_ReceiveData[UT_STUB_MAX_ITEM_SIZE];
 static size_t        UT_Stub_ReceiveDataSize;
 
+/*
+ * os-impl-queue.c converts its timeout through OS_FreeRTOS_MsToTicks(), which
+ * lives in os-impl-tasks.c and is covered there. This runner links only the
+ * queue module, so it gets a stand-in that records the input and returns a
+ * marker, letting the test check the call is made and its result is used.
+ */
+uint32     UT_Stub_LastMsToTicksInput;
+TickType_t UT_Stub_MsToTicksResult = 0x1234;
+
+TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
+{
+    UT_Stub_LastMsToTicksInput = millisecond;
+
+    return UT_Stub_MsToTicksResult;
+}
+
 QueueHandle_t xQueueCreate(UBaseType_t uxQueueLength, UBaseType_t uxItemSize)
 {
     int32 status;

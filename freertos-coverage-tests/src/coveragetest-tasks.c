@@ -218,8 +218,22 @@ void Test_OS_TaskExit_Impl(void)
 
 void Test_OS_TaskDelay_Impl(void)
 {
+    /* the fake kernel runs at 100 Hz: 10 ms per tick */
+
+    /* zero stays zero: a yield, not a sleep */
+    UtAssert_INT32_EQ(OS_TaskDelay_Impl(0), OS_SUCCESS);
+    UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 0);
+
+    /* shorter than a tick must still sleep, not truncate to a yield */
+    UtAssert_INT32_EQ(OS_TaskDelay_Impl(1), OS_SUCCESS);
+    UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 1);
+
+    /* not a whole number of ticks -> rounded up, never short */
+    UtAssert_INT32_EQ(OS_TaskDelay_Impl(15), OS_SUCCESS);
+    UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 2);
+
     UtAssert_INT32_EQ(OS_TaskDelay_Impl(250), OS_SUCCESS);
-    UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 250);
+    UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 26);
 }
 
 void Test_OS_TaskSetPriority_Impl(void)

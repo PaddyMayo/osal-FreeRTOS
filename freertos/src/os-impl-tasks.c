@@ -58,6 +58,29 @@ UBaseType_t OS_FreeRTOS_PriorityRemap(osal_priority_t priority)
 /*----------------------------------------------------------------
  *
  *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Converts a wait in milliseconds to ticks such that the wait lasts
+ *           at least that long. pdMS_TO_TICKS() truncates, so with a coarse
+ *           tick (the POSIX platforms run at 100 Hz, i.e. 10 ms) a wait
+ *           shorter than one tick would become zero ticks: vTaskDelay(0) only
+ *           yields and a zero queue timeout polls. Zero stays zero (no wait);
+ *           anything else gets one tick on top of the truncated value, which
+ *           covers the sub-tick remainder and the partly elapsed tick the
+ *           caller is already in. See prototype in os-impl-tasks.h.
+ *
+ *-----------------------------------------------------------------*/
+TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
+{
+    if (millisecond == 0)
+    {
+        return 0;
+    }
+
+    return pdMS_TO_TICKS(millisecond) + 1;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Called through portCLEAN_UP_TCB once the kernel is finished
  *           with a deleted task: frees the stack OS_TaskCreate_Impl
  *           allocated for it, if any, and marks the slot free for reuse.
@@ -229,7 +252,7 @@ void OS_TaskExit_Impl(void)
  *-----------------------------------------------------------------*/
 int32 OS_TaskDelay_Impl(uint32 millisecond)
 {
-    vTaskDelay(pdMS_TO_TICKS(millisecond));
+    vTaskDelay(OS_FreeRTOS_MsToTicks(millisecond));
 
     return OS_SUCCESS;
 }

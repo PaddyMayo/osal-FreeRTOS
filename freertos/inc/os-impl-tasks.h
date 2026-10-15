@@ -42,6 +42,14 @@ extern OS_impl_task_internal_record_t OS_impl_task_table[OS_MAX_TASKS];
  */
 UBaseType_t OS_FreeRTOS_PriorityRemap(osal_priority_t priority);
 
+/*
+ * Converts a wait in milliseconds to ticks, rounding up so the wait is never
+ * shorter than asked (pdMS_TO_TICKS() truncates, and a sub-tick wait would
+ * become zero ticks, i.e. a yield or a poll). Zero stays zero. Every OSAL call
+ * that waits goes through this, not pdMS_TO_TICKS() directly.
+ */
+TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
+
 void OS_FreeRTOS_TaskCleanup(const void *tcb);
 
 #endif /* OS_IMPL_TASKS_H */
