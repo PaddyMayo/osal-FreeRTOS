@@ -1,5 +1,8 @@
 name: sim-test
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 # Runs the firmware on every platform under QEMU (freertos-sim-tests/). It is a
 # workflow of its own, so the product build in ci.yml does not depend on it.
