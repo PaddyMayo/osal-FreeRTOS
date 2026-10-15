@@ -1,15 +1,15 @@
 ##########################################################################
 #
-# QEMU firmware tests: build the product for one platform, link a test
+# Simulation tests: build the product for one platform, link a test
 # firmware against it, and run that firmware under QEMU, driven through gdb.
 #
 # This is a CMake project of its own, so nothing in the product build knows
 # about QEMU: it takes the product tree as a subproject and the platform from
 # the same -C config file the product uses, e.g.
 #
-#   cmake -S freertos-qemu-tests -B build/qemu-cortex-m3 -C platforms/cortex-m3/config.cmake
-#   cmake --build build/qemu-cortex-m3 -j
-#   ctest --test-dir build/qemu-cortex-m3 --output-on-failure
+#   cmake -S freertos-sim-tests -B build/sim-cortex-m3 -C platforms/cortex-m3/config.cmake
+#   cmake --build build/sim-cortex-m3 -j
+#   ctest --test-dir build/sim-cortex-m3 --output-on-failure
 #
 # The firmware is run as it is built: the harness (gdb/run_firmware_test.py)
 # only breaks on functions the BSP already has.
@@ -17,7 +17,7 @@
 ##########################################################################
 
 cmake_minimum_required(VERSION 3.16)
-project(osal_freertos_qemu_tests C)
+project(osal_freertos_sim_tests C)
 
 enable_testing()
 
@@ -57,12 +57,12 @@ else ()
 endif ()
 
 # ---- The firmware under test -------------------------------------------------
-add_executable(qemu_smoke src/smoke.c)
-target_link_libraries(qemu_smoke PRIVATE osal_bsp osal)
+add_executable(sim_smoke src/smoke.c)
+target_link_libraries(sim_smoke PRIVATE osal_bsp osal)
 
 # ---- Tests ---------------------------------------------------------------------
 string(TOLOWER "${PORT}" PORT_LOWER)
-set(TEST_NAME qemu-${PORT_LOWER}${TEST_SUFFIX}-smoke)
+set(TEST_NAME sim-${PORT_LOWER}${TEST_SUFFIX}-smoke)
 
 if (QEMU_KIND STREQUAL "board")
     find_program(QEMU_GDB NAMES gdb-multiarch arm-none-eabi-gdb)
@@ -73,7 +73,7 @@ if (QEMU_KIND STREQUAL "board")
     endif ()
 
     add_test(NAME ${TEST_NAME}
-        COMMAND ${QEMU_GDB} -q -batch -x ${CMAKE_CURRENT_SOURCE_DIR}/gdb/run_firmware_test.py --args $<TARGET_FILE:qemu_smoke>
+        COMMAND ${QEMU_GDB} -q -batch -x ${CMAKE_CURRENT_SOURCE_DIR}/gdb/run_firmware_test.py --args $<TARGET_FILE:sim_smoke>
     )
     set_tests_properties(${TEST_NAME} PROPERTIES
         ENVIRONMENT "QEMU_SYSTEM=${QEMU_SYSTEM_PATH};QEMU_MACHINE=${QEMU_MACHINE}"
@@ -87,6 +87,6 @@ else ()
         return()
     endif ()
 
-    add_test(NAME ${TEST_NAME} COMMAND ${QEMU_USER_PATH} -L ${QEMU_USER_SYSROOT} $<TARGET_FILE:qemu_smoke>)
+    add_test(NAME ${TEST_NAME} COMMAND ${QEMU_USER_PATH} -L ${QEMU_USER_SYSROOT} $<TARGET_FILE:sim_smoke>)
     set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 120)
 endif ()

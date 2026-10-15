@@ -1,10 +1,10 @@
-name: qemu-test
+name: sim-test
 on: [push, pull_request]
 
-# Runs the firmware on every platform under QEMU (freertos-qemu-tests/). It is a
+# Runs the firmware on every platform under QEMU (freertos-sim-tests/). It is a
 # workflow of its own, so the product build in ci.yml does not depend on it.
 jobs:
-  qemu-test:
+  sim-test:
     runs-on: ubuntu-latest
     container: ghcr.io/paddymayo/osal-freertos-dev:latest
     strategy:
@@ -15,12 +15,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: cmake -S freertos-qemu-tests -B build/qemu-${{ matrix.platform }} -C platforms/${{ matrix.platform }}/config.cmake
-      - run: cmake --build build/qemu-${{ matrix.platform }} -j
-      - run: ctest --test-dir build/qemu-${{ matrix.platform }} --output-on-failure
+      - run: cmake -S freertos-sim-tests -B build/sim-${{ matrix.platform }} -C platforms/${{ matrix.platform }}/config.cmake
+      - run: cmake --build build/sim-${{ matrix.platform }} -j
+      - run: ctest --test-dir build/sim-${{ matrix.platform }} --output-on-failure
       # The firmware that failed, for reproducing the run locally with gdb
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: firmware-${{ matrix.platform }}
-          path: build/qemu-${{ matrix.platform }}/qemu_smoke
+          path: build/sim-${{ matrix.platform }}/sim_smoke
