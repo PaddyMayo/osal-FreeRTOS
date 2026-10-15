@@ -69,25 +69,33 @@ void OS_FreeRTOS_TaskCleanup(const void *tcb)
 {
     OS_impl_task_internal_record_t *impl;
     StackType_t                    *stack;
+    uintptr_t                       offset;
 
-    for (uint32 i = 0; i < OS_MAX_TASKS; ++i)
+    /*
+     * The kernel only ever passes the address of a real TCB, and the ones this
+     * port creates are the tcb_buffer members of the table records, so the
+     * record index follows from the address. The unsigned subtraction wraps
+     * for an address below the table, leaving one range check for both ends.
+     * TCBs the port did not create (idle, timer service) fall outside it.
+     */
+    offset = (uintptr_t)tcb - (uintptr_t)OS_impl_task_table;
+    if (offset >= sizeof(OS_impl_task_table))
     {
-        impl = &OS_impl_task_table[i];
-
-        if (tcb == &impl->tcb_buffer)
-        {
-            stack              = impl->stack_buffer;
-            impl->stack_buffer = NULL;
-
-            if (stack != NULL)
-            {
-                vPortFree(stack);
-            }
-
-            impl->id = NULL;
-            break;
-        }
+        return;
     }
+
+    impl = &OS_impl_task_table[offset / sizeof(*impl)];
+
+    stack              = impl->stack_buffer;
+    impl->stack_buffer = NULL;
+
+    if (stack != NULL)
+    {
+        vPortFree(stack);
+    }
+
+    /* release the slot last, so OS_TaskCreate_Impl cannot reuse it mid-cleanup */
+    impl->id = NULL;
 }
 
 /*----------------------------------------------------------------
