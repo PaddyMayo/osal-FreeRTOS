@@ -42,6 +42,8 @@ extern const void   *UT_Stub_LastSendItem;
 extern TickType_t    UT_Stub_LastSendTicks;
 extern QueueHandle_t UT_Stub_LastReceiveQueue;
 extern TickType_t    UT_Stub_LastReceiveTicks;
+extern uint32        UT_Stub_LastMsToTicksInput;
+extern TickType_t    UT_Stub_MsToTicksResult;
 
 extern void UT_Stub_SetReceiveData(const void *data, size_t size);
 extern void UT_Stub_ResetReceiveData(void);
@@ -132,9 +134,10 @@ void Test_OS_QueueGet_Impl(void)
     UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_CHECK), OS_SUCCESS);
     UtAssert_UINT32_EQ(UT_Stub_LastReceiveTicks, 0);
 
-    /* millisecond timeout -> converted to ticks via pdMS_TO_TICKS() */
+    /* millisecond timeout -> converted by OS_FreeRTOS_MsToTicks() (its rounding is covered with the tasks module) */
     UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, 250), OS_SUCCESS);
-    UtAssert_UINT32_EQ(UT_Stub_LastReceiveTicks, 250);
+    UtAssert_UINT32_EQ(UT_Stub_LastMsToTicksInput, 250);
+    UtAssert_UINT32_EQ(UT_Stub_LastReceiveTicks, UT_Stub_MsToTicksResult);
 
     /* caller buffer larger than max_size -> fine, still reports max_size, not the buffer size */
     memset(oversized, 0, sizeof(oversized));
