@@ -10,6 +10,7 @@
  */
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "FreeRTOS.h"
@@ -38,10 +39,11 @@ void OS_BSP_ConsoleSetMode_Impl(uint32 ModeBits)
    OS_BSP_MaskAllInterrupts
 
    Stops every maskable interrupt (on a POSIX host, every signal) on the
-   calling CPU/thread, and is never undone. taskDISABLE_INTERRUPTS() is not
-   used because each FreeRTOS port defines it differently: the ARMv7-M and
-   later ports only raise BASEPRI, which leaves higher-priority interrupts
-   running.
+   calling CPU/thread, and is never undone. On Cortex-M it also stops SysTick
+   and clears what is pending, so the halt loop can sleep, see below.
+   taskDISABLE_INTERRUPTS() is not used because each FreeRTOS port defines it
+   differently: the ARMv7-M and later ports only raise BASEPRI, which leaves
+   higher-priority interrupts running.
 
    The port's family comes from the macro it names in
    generic-freertos/config/CMakeLists.txt. A port that names neither family
@@ -52,10 +54,43 @@ void OS_BSP_ConsoleSetMode_Impl(uint32 ModeBits)
  ------------------------------------------------------------------*/
 #if defined(OSAL_FREERTOS_PORT_CORTEX_M)
 
+/* System Control Space registers, at the same address on every Cortex-M */
+#define OS_BSP_SYST_CSR         (*(volatile uint32_t *)0xE000E010UL)
+#define OS_BSP_ICSR             (*(volatile uint32_t *)0xE000ED04UL)
+#define OS_BSP_NVIC_ICER(Index) (*(volatile uint32_t *)(0xE000E180UL + (4UL * (Index))))
+#define OS_BSP_NVIC_ICPR(Index) (*(volatile uint32_t *)(0xE000E280UL + (4UL * (Index))))
+
+#define OS_BSP_ICSR_PENDSVCLR (1UL << 27)
+#define OS_BSP_ICSR_PENDSTCLR (1UL << 25)
+
+/* Armv6-M has 32 interrupts in one register, the later cores up to 480 in 16 */
+#if defined(__ARM_ARCH_6M__)
+#define OS_BSP_NVIC_REGISTERS 1UL
+#else
+#define OS_BSP_NVIC_REGISTERS 16UL
+#endif
+
 static inline void OS_BSP_MaskAllInterrupts(void)
 {
+    uint32_t Index;
+
     /* PRIMASK masks every configurable interrupt, whatever its priority */
     __asm volatile("cpsid i" ::: "memory");
+
+    /*
+     * A masked interrupt that is pending still wakes WFI, and WFI returns at
+     * once if one is already pending. SysTick sets its pending bit on every
+     * tick, so the halt loop in OS_BSP_Halt would spin at full speed instead of
+     * sleeping. Stopping SysTick and PendSV and disabling and clearing every
+     * NVIC interrupt leaves nothing that can become pending.
+     */
+    OS_BSP_SYST_CSR = 0U;
+    OS_BSP_ICSR     = OS_BSP_ICSR_PENDSTCLR | OS_BSP_ICSR_PENDSVCLR;
+    for (Index = 0U; Index < OS_BSP_NVIC_REGISTERS; Index++)
+    {
+        OS_BSP_NVIC_ICER(Index) = 0xFFFFFFFFUL;
+        OS_BSP_NVIC_ICPR(Index) = 0xFFFFFFFFUL;
+    }
 }
 
 static inline void OS_BSP_HaltWait(void)
