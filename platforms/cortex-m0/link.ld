@@ -1,6 +1,13 @@
 /*
- * Linker script slot (OSAL_FREERTOS_LINKER_SCRIPT) for the GCC_ARM_CM0 build.
- *
- * Placeholder: it is applied with -T, which replaces the toolchain's default
- * script, so a board port must replace it before linking an executable.
+ * Linker script (OSAL_FREERTOS_LINKER_SCRIPT) for the GCC_ARM_CM0 build, laid out
+ * for the BBC micro:bit (Cortex-M0, 16 KB of RAM).
+ * The sections are shared by every Cortex-M platform, see ../common/cortex-m.ld.
  */
+
+MEMORY
+{
+    FLASH (rx)  : ORIGIN = 0x00000000, LENGTH = 256K
+    RAM   (rwx) : ORIGIN = 0x20000000, LENGTH = 16K
+}
+
+INCLUDE cortex-m.ld
