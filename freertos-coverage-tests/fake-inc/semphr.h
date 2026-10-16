@@ -30,13 +30,18 @@ SemaphoreHandle_t OCS_xSemaphoreCreateBinaryStatic(StaticSemaphore_t *pxSemaphor
 
 SemaphoreHandle_t OCS_xSemaphoreCreateMutexStatic(StaticSemaphore_t *pxMutexBuffer);
 
+SemaphoreHandle_t OCS_xSemaphoreCreateCountingStatic(UBaseType_t        uxMaxCount,
+                                                     UBaseType_t        uxInitialCount,
+                                                     StaticSemaphore_t *pxSemaphoreBuffer);
+
 BaseType_t OCS_xSemaphoreTake(SemaphoreHandle_t xSemaphore, TickType_t xBlockTime);
 
 BaseType_t OCS_xSemaphoreGive(SemaphoreHandle_t xSemaphore);
 
-#define xSemaphoreCreateBinaryStatic OCS_xSemaphoreCreateBinaryStatic
-#define xSemaphoreCreateMutexStatic  OCS_xSemaphoreCreateMutexStatic
-#define xSemaphoreTake               OCS_xSemaphoreTake
-#define xSemaphoreGive               OCS_xSemaphoreGive
+#define xSemaphoreCreateBinaryStatic   OCS_xSemaphoreCreateBinaryStatic
+#define xSemaphoreCreateMutexStatic    OCS_xSemaphoreCreateMutexStatic
+#define xSemaphoreCreateCountingStatic OCS_xSemaphoreCreateCountingStatic
+#define xSemaphoreTake                 OCS_xSemaphoreTake
+#define xSemaphoreGive                 OCS_xSemaphoreGive
 
 #endif /* SEMAPHORE_H */

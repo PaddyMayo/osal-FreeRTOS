@@ -31,6 +31,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "semphr.h"
 
 #include "os-shared-task.h"
 #include "os-shared-idmap.h"
@@ -51,10 +52,17 @@ extern configSTACK_DEPTH_TYPE UT_Stub_LastCreateStackDepth;
 
 extern void UT_Stub_ResetTLS(void);
 
+/* The TCB pool's semaphore, declared in freertos-task-stubs.c */
+extern StaticSemaphore_t *UT_Stub_LastCountingSemBuffer;
+extern UBaseType_t        UT_Stub_LastCountingSemMax;
+extern UBaseType_t        UT_Stub_LastCountingSemInitial;
+extern TickType_t         UT_Stub_LastTakeTicks;
+
 /* Captured OS_TaskEntryPoint() argument, declared in osal-shared-stubs.c */
 extern osal_id_t UT_Stub_LastEntryPointId;
 
-extern void OS_FreeRTOS_TaskCleanup(const void *tcb);
+extern void  OS_FreeRTOS_TaskCleanup(const void *tcb);
+extern int32 OS_FreeRTOS_TaskInit(void);
 
 #define UT_TASK_TOKEN(idx)                                                                              \
     (OS_object_token_t)                                                                                 \
@@ -94,54 +102,96 @@ void Test_OS_TaskCreate_Impl(void)
     OS_task_table[0].stack_size = sizeof(StackType_t) * 128;
     OS_task_table[0].priority   = 50;
 
-    /* OSAL_TASK_STACK_ALLOCATE -> pvPortMalloc() path, success, stack owned by the port */
+    /* OSAL_TASK_STACK_ALLOCATE -> waits for a pool entry, then pvPortMalloc(); stack owned by the port */
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
+    UtAssert_STUB_COUNT(xSemaphoreTake, 1);
+    UtAssert_True(UT_Stub_LastTakeTicks == portMAX_DELAY, "waits for a free pool entry for as long as it takes");
+    UtAssert_True(UT_TaskTest_GetPoolInUse(0), "first pool entry claimed");
     UtAssert_StrCmp(UT_Stub_LastCreateName, "UnitTest", "task name passed through");
     UtAssert_UINT32_EQ(UT_Stub_LastCreateStackDepth, 128);
     UtAssert_STUB_COUNT(pvPortMalloc, 1);
     UtAssert_STUB_COUNT(xTaskCreateStatic, 1);
-    UtAssert_NOT_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
+    UtAssert_NOT_NULL(UT_TaskTest_GetPoolStack(0));
+    UtAssert_True(UT_TaskTest_GetImplTaskId(UT_INDEX_0) == UT_TaskTest_GetPoolTcb(0),
+                  "the task is built on the pool entry's TCB");
 
-    /* slot's previous task not yet cleaned up by the kernel -> OS_ERROR, short-circuited */
-    UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
-    UtAssert_STUB_COUNT(pvPortMalloc, 1);
-    UtAssert_STUB_COUNT(xTaskCreateStatic, 1);
+    /* the table slot is handed out again before the kernel has cleaned up its
+     * previous task (the entry is still held) -> succeeds, on the next entry */
+    UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
+    UtAssert_STUB_COUNT(xSemaphoreTake, 2);
+    UtAssert_True(UT_TaskTest_GetPoolInUse(1), "second pool entry claimed");
+    UtAssert_STUB_COUNT(pvPortMalloc, 2);
+    UtAssert_STUB_COUNT(xTaskCreateStatic, 2);
+    UtAssert_True(UT_TaskTest_GetImplTaskId(UT_INDEX_0) == UT_TaskTest_GetPoolTcb(1),
+                  "the new task is built on its own TCB");
 
-    /* kernel cleanup frees the allocated stack and releases the slot */
-    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
+    /* kernel cleanup of each frees its stack and returns its entry */
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetPoolTcb(0));
     UtAssert_STUB_COUNT(vPortFree, 1);
+    UtAssert_STUB_COUNT(xSemaphoreGive, 1);
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetPoolTcb(1));
+    UtAssert_STUB_COUNT(vPortFree, 2);
+    UtAssert_STUB_COUNT(xSemaphoreGive, 2);
 
     /* caller-supplied stack pointer -> no allocation, success, stack not owned by the port */
     OS_task_table[0].stack_pointer = (osal_stackptr_t)0x2000;
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
-    UtAssert_STUB_COUNT(pvPortMalloc, 1);
-    UtAssert_STUB_COUNT(xTaskCreateStatic, 2);
-    UtAssert_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
+    UtAssert_STUB_COUNT(pvPortMalloc, 2);
+    UtAssert_STUB_COUNT(xTaskCreateStatic, 3);
+    UtAssert_NULL(UT_TaskTest_GetPoolStack(0));
 
-    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
-    UtAssert_STUB_COUNT(vPortFree, 1);
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetPoolTcb(0));
+    UtAssert_STUB_COUNT(vPortFree, 2);
+    UtAssert_STUB_COUNT(xSemaphoreGive, 3);
 
-    /* pvPortMalloc() failure -> OS_ERROR, no xTaskCreateStatic() call */
+    /* pvPortMalloc() failure -> OS_ERROR, no xTaskCreateStatic() call, entry handed back */
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UT_SetDeferredRetcode(UT_KEY(pvPortMalloc), 1, -1);
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
-    UtAssert_STUB_COUNT(pvPortMalloc, 2);
-    UtAssert_STUB_COUNT(xTaskCreateStatic, 2);
+    UtAssert_STUB_COUNT(pvPortMalloc, 3);
+    UtAssert_STUB_COUNT(xTaskCreateStatic, 3);
+    UtAssert_True(!UT_TaskTest_GetPoolInUse(0), "entry released after an allocation failure");
+    UtAssert_STUB_COUNT(xSemaphoreGive, 4);
 
-    /* xTaskCreateStatic() failure with allocated stack -> OS_ERROR, freed */
+    /* xTaskCreateStatic() failure with allocated stack -> OS_ERROR, stack freed, entry handed back */
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UT_SetDeferredRetcode(UT_KEY(xTaskCreateStatic), 1, -1);
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
-    UtAssert_STUB_COUNT(vPortFree, 2);
-    UtAssert_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
+    UtAssert_STUB_COUNT(vPortFree, 3);
+    UtAssert_NULL(UT_TaskTest_GetPoolStack(0));
+    UtAssert_True(!UT_TaskTest_GetPoolInUse(0), "entry released after a create failure");
+    UtAssert_STUB_COUNT(xSemaphoreGive, 5);
 
     /* xTaskCreateStatic() failure with caller-supplied stack -> OS_ERROR, no
      * additional free (vPortFree count is cumulative across this function) */
     OS_task_table[0].stack_pointer = (osal_stackptr_t)0x2000;
     UT_SetDeferredRetcode(UT_KEY(xTaskCreateStatic), 1, -1);
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
-    UtAssert_STUB_COUNT(vPortFree, 2);
+    UtAssert_STUB_COUNT(vPortFree, 3);
+    UtAssert_STUB_COUNT(xSemaphoreGive, 6);
+
+    /* the semaphore says an entry is free but none is (cannot happen) -> OS_ERROR, nothing created,
+     * and the count is given back */
+    UT_TaskTest_SetAllPoolInUse();
+    UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
+    UtAssert_STUB_COUNT(xTaskCreateStatic, 5);
+    UtAssert_STUB_COUNT(xSemaphoreGive, 7);
+}
+
+void Test_OS_FreeRTOS_TaskInit(void)
+{
+    /* one pool entry per task the table can hold, all free to begin with */
+    UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_SUCCESS);
+    UtAssert_STUB_COUNT(xSemaphoreCreateCountingStatic, 1);
+    UtAssert_NOT_NULL(UT_Stub_LastCountingSemBuffer);
+    UtAssert_UINT32_EQ(UT_Stub_LastCountingSemMax, OS_MAX_TASKS);
+    UtAssert_UINT32_EQ(UT_Stub_LastCountingSemInitial, OS_MAX_TASKS);
+
+    /* xSemaphoreCreateCountingStatic() failure -> OS_ERROR */
+    UT_SetDeferredRetcode(UT_KEY(xSemaphoreCreateCountingStatic), 1, -1);
+    UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_ERROR);
+    UtAssert_STUB_COUNT(xSemaphoreCreateCountingStatic, 2);
 }
 
 void Test_OS_FreeRTOSTaskEntry(void)
@@ -172,9 +222,10 @@ void Test_OS_TaskDelete_Impl(void)
 
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
 
-    /* stack is freed by the kernel's portCLEAN_UP_TCB hook, not here */
+    /* the kernel frees the task right away; the stack still goes through the portCLEAN_UP_TCB hook, not here */
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
     UtAssert_True(UT_Stub_LastDeletedHandle == (TaskHandle_t)0x4242, "vTaskDelete() called with task handle");
+    UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
     UtAssert_STUB_COUNT(vPortFree, 0);
 }
 
@@ -184,27 +235,43 @@ void Test_OS_FreeRTOS_TaskCleanup(void)
 
     memset(&other_tcb, 0, sizeof(other_tcb));
 
-    /* port-allocated stack -> freed, slot released */
-    UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
-    UT_TaskTest_SetImplStackBuffer(UT_INDEX_0, malloc(sizeof(StackType_t) * 16));
-    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
+    /* port-allocated stack -> freed, entry released and the semaphore given */
+    UT_TaskTest_SetPoolInUse(0, true);
+    UT_TaskTest_SetPoolStack(0, malloc(sizeof(StackType_t) * 16));
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetPoolTcb(0));
     UtAssert_STUB_COUNT(vPortFree, 1);
-    UtAssert_NULL(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0));
-    UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
+    UtAssert_NULL(UT_TaskTest_GetPoolStack(0));
+    UtAssert_True(!UT_TaskTest_GetPoolInUse(0), "entry released");
+    UtAssert_STUB_COUNT(xSemaphoreGive, 1);
 
-    /* caller-supplied stack -> nothing freed, slot released */
-    UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
-    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetImplTcb(UT_INDEX_0));
+    /* caller-supplied stack -> nothing freed, entry still released */
+    UT_TaskTest_SetPoolInUse(1, true);
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetPoolTcb(1));
     UtAssert_STUB_COUNT(vPortFree, 1);
-    UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
+    UtAssert_True(!UT_TaskTest_GetPoolInUse(1), "entry released");
+    UtAssert_STUB_COUNT(xSemaphoreGive, 2);
 
-    /* TCB not in the task table (e.g. the idle task) -> record untouched */
+    /* the last entry in the pool is found too */
+    UT_TaskTest_SetPoolInUse(OS_MAX_TASKS - 1, true);
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetPoolTcb(OS_MAX_TASKS - 1));
+    UtAssert_True(!UT_TaskTest_GetPoolInUse(OS_MAX_TASKS - 1), "last entry released");
+    UtAssert_STUB_COUNT(xSemaphoreGive, 3);
+
+    /* the task table slot is left alone: OSAL freed it when the task was deleted,
+     * and it may belong to a newer task by now */
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
-    UT_TaskTest_SetImplStackBuffer(UT_INDEX_0, (StackType_t *)0x3000);
+    UT_TaskTest_SetPoolInUse(0, true);
+    OS_FreeRTOS_TaskCleanup(UT_TaskTest_GetPoolTcb(0));
+    UtAssert_ADDRESS_EQ(UT_TaskTest_GetImplTaskId(UT_INDEX_0), 0x4242);
+
+    /* TCB not in the pool (e.g. the idle task) -> nothing touched */
+    UT_TaskTest_SetPoolInUse(0, true);
+    UT_TaskTest_SetPoolStack(0, (StackType_t *)0x3000);
     OS_FreeRTOS_TaskCleanup(&other_tcb);
     UtAssert_STUB_COUNT(vPortFree, 1);
-    UtAssert_ADDRESS_EQ(UT_TaskTest_GetImplTaskId(UT_INDEX_0), 0x4242);
-    UtAssert_ADDRESS_EQ(UT_TaskTest_GetImplStackBuffer(UT_INDEX_0), 0x3000);
+    UtAssert_STUB_COUNT(xSemaphoreGive, 4);
+    UtAssert_True(UT_TaskTest_GetPoolInUse(0), "entry still in use");
+    UtAssert_ADDRESS_EQ(UT_TaskTest_GetPoolStack(0), 0x3000);
 }
 
 void Test_OS_TaskExit_Impl(void)
@@ -306,6 +373,7 @@ void Osapi_Test_Setup(void)
     UT_ResetState(0);
     memset(OS_task_table, 0, sizeof(OS_task_table));
     memset(UT_Ref_OS_impl_task_table, 0, UT_Ref_OS_impl_task_table_SIZE);
+    memset(UT_Ref_OS_impl_task_tcb_pool, 0, UT_Ref_OS_impl_task_tcb_pool_SIZE);
     UT_Stub_ResetTLS();
 }
 
@@ -319,6 +387,7 @@ void UtTest_Setup(void)
 {
     ADD_TEST(OS_TaskMatch_Impl);
     ADD_TEST(OS_TaskCreate_Impl);
+    ADD_TEST(OS_FreeRTOS_TaskInit);
     ADD_TEST(OS_FreeRTOSTaskEntry);
     ADD_TEST(OS_TaskDetach_Impl);
     ADD_TEST(OS_TaskDelete_Impl);

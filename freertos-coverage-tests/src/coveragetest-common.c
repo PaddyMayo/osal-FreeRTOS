@@ -23,6 +23,8 @@
 #include "os-shared-common.h"
 #include "os-shared-idmap.h"
 
+#include "os-impl-tasks.h"
+
 /* Captured stub call arguments, declared in freertos-common-stubs.c */
 extern StaticSemaphore_t *UT_Stub_LastCreateSemBuffer;
 extern SemaphoreHandle_t  UT_Stub_LastTakeSem;
@@ -37,10 +39,20 @@ extern SemaphoreHandle_t  UT_Stub_LastGiveSem;
 
 void Test_OS_API_Impl_Init(void)
 {
-    /* any type but the first -> nothing to do, nothing created */
-    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_TASK), OS_SUCCESS);
+    /* any type but the first, and tasks -> nothing to do, nothing created */
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_QUEUE), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreCreateBinaryStatic, 0);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 0);
     UtAssert_UINT32_EQ(OS_SharedGlobalVars.TicksPerSecond, 0);
+
+    /* the task type -> the task module sets up its TCB pool, and its failure is passed on */
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_TASK), OS_SUCCESS);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 1);
+    UtAssert_STUB_COUNT(xSemaphoreCreateBinaryStatic, 0);
+
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_TaskInit), 1, -1);
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_TASK), OS_ERROR);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 2);
 
     /* the first type -> tick rate published, idle semaphore created */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
