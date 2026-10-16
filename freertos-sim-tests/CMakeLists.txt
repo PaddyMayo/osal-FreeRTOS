@@ -108,3 +108,53 @@ foreach (FIRMWARE IN LISTS SIM_FIRMWARE SIM_FIRMWARE_OSAL)
         set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 120)
     endif ()
 endforeach ()
+
+# ---- The halt ------------------------------------------------------------------
+# Each way the BSP halts, and a firmware that spins as the control (EXPECT busy)
+# the CPU measurement is checked against. A Cortex-M halts when the application
+# returns; the POSIX port ends the scheduler and exits instead, so it has no
+# "exit" case. It has no "overflow" case either: a POSIX task runs on a real
+# pthread stack, not the stack FreeRTOS checks, so it cannot be made to overflow.
+# The boards and the process are watched differently, see the harnesses in gdb/.
+set(HALT_CASES assert overflow exit busy)
+if (QEMU_KIND STREQUAL "process")
+    set(HALT_CASES assert busy)
+elseif ("${PORT}" STREQUAL "GCC_ARM_CM33_NTZ_NONSECURE")
+    # The Cortex-M33 checks the stack limit in hardware (PSPLIM), so an overflow
+    # is a HardFault before FreeRTOS's own check runs, and that spins by design
+    set(HALT_CASES assert exit busy)
+endif ()
+
+find_package(Python3 COMPONENTS Interpreter)
+
+foreach (CASE IN LISTS HALT_CASES)
+    string(TOUPPER "${CASE}" CASE_UPPER)
+    add_executable(sim_halt_${CASE} src/halt.c)
+    target_compile_definitions(sim_halt_${CASE} PRIVATE HALT_CASE_${CASE_UPPER})
+    target_link_libraries(sim_halt_${CASE} PRIVATE osal_bsp osal)
+
+    set(TEST_NAME sim-${PORT_LOWER}${TEST_SUFFIX}-halt-${CASE})
+    if (CASE STREQUAL "busy")
+        set(EXPECT busy)
+    else ()
+        set(EXPECT idle)
+    endif ()
+
+    if (QEMU_KIND STREQUAL "board")
+        if (QEMU_GDB AND QEMU_SYSTEM_PATH)
+            add_test(NAME ${TEST_NAME}
+                COMMAND ${QEMU_GDB} -q -batch -x ${CMAKE_CURRENT_SOURCE_DIR}/gdb/run_halt_test.py --args $<TARGET_FILE:sim_halt_${CASE}>
+            )
+            set_tests_properties(${TEST_NAME} PROPERTIES
+                ENVIRONMENT "QEMU_SYSTEM=${QEMU_SYSTEM_PATH};QEMU_MACHINE=${QEMU_MACHINE};EXPECT=${EXPECT}"
+                TIMEOUT 120
+            )
+        endif ()
+    elseif (QEMU_USER_PATH AND Python3_FOUND)
+        add_test(NAME ${TEST_NAME}
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/gdb/run_halt_test_posix.py
+                    ${EXPECT} ${QEMU_USER_PATH} ${QEMU_USER_SYSROOT} $<TARGET_FILE:sim_halt_${CASE}>
+        )
+        set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 120)
+    endif ()
+endforeach ()
