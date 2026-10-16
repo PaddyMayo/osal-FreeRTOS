@@ -24,6 +24,8 @@
 #include "os-shared-idmap.h"
 
 #include "os-impl-tasks.h"
+#include "os-impl-files.h"
+#include "os-impl-filesys.h"
 
 /* Captured stub call arguments, declared in freertos-common-stubs.c */
 extern StaticSemaphore_t *UT_Stub_LastCreateSemBuffer;
@@ -39,7 +41,7 @@ extern SemaphoreHandle_t  UT_Stub_LastGiveSem;
 
 void Test_OS_API_Impl_Init(void)
 {
-    /* any type but the first, and tasks -> nothing to do, nothing created */
+    /* any type but the first, tasks, streams and file systems -> nothing to do, nothing created */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_QUEUE), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreCreateBinaryStatic, 0);
     UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 0);
@@ -53,6 +55,22 @@ void Test_OS_API_Impl_Init(void)
     UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_TaskInit), 1, -1);
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_TASK), OS_ERROR);
     UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 2);
+
+    /* the stream type -> the file module clears its handle table, and its failure is passed on */
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_STREAM), OS_SUCCESS);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_FileInit, 1);
+
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_FileInit), 1, -1);
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_STREAM), OS_ERROR);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_FileInit, 2);
+
+    /* the file system type -> the filesys module creates its lock, and its failure is passed on */
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_FILESYS), OS_SUCCESS);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_FileSysInit, 1);
+
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_FileSysInit), 1, -1);
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_FILESYS), OS_ERROR);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_FileSysInit, 2);
 
     /* the first type -> tick rate published, idle semaphore created */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);

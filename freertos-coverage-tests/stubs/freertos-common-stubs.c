@@ -19,6 +19,8 @@
 #include "osapi-error.h"
 
 #include "os-impl-tasks.h"
+#include "os-impl-files.h"
+#include "os-impl-filesys.h"
 
 StaticSemaphore_t *UT_Stub_LastCreateSemBuffer;
 SemaphoreHandle_t  UT_Stub_LastTakeSem;
@@ -72,6 +74,39 @@ int32 OS_FreeRTOS_TaskInit(void)
     int32 status;
 
     status = UT_DEFAULT_IMPL(OS_FreeRTOS_TaskInit);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
+}
+
+/*
+ * os-impl-common.c also calls these for the stream and file system object
+ * types; they live in os-impl-files.c and os-impl-filesys.c and are covered
+ * there.
+ */
+int32 OS_FreeRTOS_FileInit(void)
+{
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_FileInit);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
+}
+
+int32 OS_FreeRTOS_FileSysInit(void)
+{
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_FileSysInit);
 
     if (status < 0)
     {
