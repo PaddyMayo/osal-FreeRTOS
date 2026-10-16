@@ -5,11 +5,6 @@
 #include "semphr.h"
 #include "timers.h"
 
-#if defined(OSAL_FREERTOS_PORT_POSIX)
-/* The POSIX port's own function, declared in its portmacro.h */
-void vPortThreadDying(void *pxTaskToDelete, volatile BaseType_t *pxPendYield);
-#endif
-
 #include "os-shared-task.h"
 #include "os-shared-idmap.h"
 
