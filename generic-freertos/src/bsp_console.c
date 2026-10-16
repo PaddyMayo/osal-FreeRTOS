@@ -17,6 +17,8 @@
 
 #include "bsp-impl.h"
 
+#include "generic_freertos_bsp_internal.h"
+
 /*----------------------------------------------------------------
    OS_BSP_ConsoleOutput_Impl
    See full description in header
@@ -163,13 +165,12 @@ static inline void OS_BSP_ReportNumber(int Number)
  ------------------------------------------------------------------*/
 static inline bool OS_BSP_BeginHalt(void)
 {
-    static volatile bool Halting = false;
-    bool                 First;
+    bool First;
 
     OS_BSP_MaskAllInterrupts();
 
-    First   = !Halting;
-    Halting = true;
+    First                                = !OS_BSP_GenericFreeRTOSGlobal.Halting;
+    OS_BSP_GenericFreeRTOSGlobal.Halting = true;
 
     return First;
 }

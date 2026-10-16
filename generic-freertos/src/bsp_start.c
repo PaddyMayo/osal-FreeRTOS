@@ -21,6 +21,8 @@
 #include "osapi-common.h"
 #include "bsp-impl.h"
 
+#include "generic_freertos_bsp_internal.h"
+
 /*----------------------------------------------------------------
    OS_BSP_StorageConfig
 
@@ -40,20 +42,7 @@ void OS_FreeRTOS_StackOverflow(const char *TaskName);
 /* Reports the exit status and halts, never returns (bsp_console.c) */
 void OS_FreeRTOS_ApplicationExit(int Status);
 
-/*
- * Console output may be locked/unlocked from any FreeRTOS task, so a
- * statically-allocated mutex is used (avoids relying on the heap, and is
- * always valid even if referenced before the scheduler is started).
- */
-static StaticSemaphore_t OS_BSP_ConsoleMutexBuffer;
-static SemaphoreHandle_t OS_BSP_ConsoleMutex;
-
-/*
- * Set by OS_BSP_StartupTask, which only runs once the scheduler is up. If
- * vTaskStartScheduler() returns with this still false, the scheduler never
- * started.
- */
-static volatile bool OS_BSP_SchedulerRan = false;
+OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 
 /*----------------------------------------------------------------
    OS_BSP_Lock_Impl
@@ -61,7 +50,7 @@ static volatile bool OS_BSP_SchedulerRan = false;
  ------------------------------------------------------------------*/
 void OS_BSP_Lock_Impl(void)
 {
-    xSemaphoreTake(OS_BSP_ConsoleMutex, portMAX_DELAY);
+    xSemaphoreTake(OS_BSP_GenericFreeRTOSGlobal.ConsoleMutex, portMAX_DELAY);
 }
 
 /*----------------------------------------------------------------
@@ -70,7 +59,7 @@ void OS_BSP_Lock_Impl(void)
  ------------------------------------------------------------------*/
 void OS_BSP_Unlock_Impl(void)
 {
-    xSemaphoreGive(OS_BSP_ConsoleMutex);
+    xSemaphoreGive(OS_BSP_GenericFreeRTOSGlobal.ConsoleMutex);
 }
 
 /*----------------------------------------------------------------
@@ -189,8 +178,8 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
 // cppcheck-suppress constParameterCallback
 static void OS_BSP_StartupTask(void *pvParameters)
 {
-    /* This task only runs once the scheduler is up, see OS_BSP_SchedulerRan */
-    OS_BSP_SchedulerRan = true;
+    /* This task only runs once the scheduler is up, see SchedulerRan in generic_freertos_bsp_internal.h */
+    OS_BSP_GenericFreeRTOSGlobal.SchedulerRan = true;
 
     /*
      * Call application specific entry point.
@@ -226,7 +215,7 @@ int main(int argc, char *argv[])
      * Initially clear the global objects
      */
     memset(&OS_BSP_Global, 0, sizeof(OS_BSP_Global));
-    OS_BSP_SchedulerRan = false;
+    memset(&OS_BSP_GenericFreeRTOSGlobal, 0, sizeof(OS_BSP_GenericFreeRTOSGlobal));
 
     /*
      * Save the argc/argv arguments for future use.
@@ -234,7 +223,8 @@ int main(int argc, char *argv[])
     OS_BSP_Global.ArgC = argc;
     OS_BSP_Global.ArgV = argv;
 
-    OS_BSP_ConsoleMutex = xSemaphoreCreateMutexStatic(&OS_BSP_ConsoleMutexBuffer);
+    OS_BSP_GenericFreeRTOSGlobal.ConsoleMutex =
+        xSemaphoreCreateMutexStatic(&OS_BSP_GenericFreeRTOSGlobal.ConsoleMutexBuffer);
 
     /*
      * Create the initial task, which performs application startup and then
@@ -261,7 +251,7 @@ int main(int argc, char *argv[])
      * start is an error exit, and no application ran to set a status of its own;
      * an ended scheduler keeps the status the application set.
      */
-    if (!OS_BSP_SchedulerRan)
+    if (!OS_BSP_GenericFreeRTOSGlobal.SchedulerRan)
     {
         OS_BSP_SetExitCode(OS_ERROR);
     }
