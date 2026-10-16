@@ -14,7 +14,14 @@
  *   which is exactly what a started scheduler does.
  */
 
+#include <setjmp.h>
+#include <signal.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <pthread.h>
 
 #include "utstubs.h"
 
@@ -35,10 +42,6 @@ StaticSemaphore_t *UT_Stub_LastCreateMutexBuffer;
 SemaphoreHandle_t  UT_Stub_LastTakeSem;
 TickType_t         UT_Stub_LastTakeTicks;
 SemaphoreHandle_t  UT_Stub_LastGiveSem;
-
-/* Captured OS_FreeRTOS_StackOverflow and OS_FreeRTOS_ApplicationExit arguments */
-const char *UT_Stub_LastOverflowTask;
-int         UT_Stub_LastExitStatus;
 
 /* Whether vTaskStartScheduler() runs the startup task (a started scheduler) or returns at once */
 bool UT_Stub_SchedulerStarts = true;
@@ -108,19 +111,52 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t xSemaphore)
     return pdTRUE;
 }
 
-/* The real one (bsp_console.c) halts and never returns; this one records the call and returns */
-void OS_FreeRTOS_StackOverflow(const char *TaskName)
-{
-    UT_Stub_LastOverflowTask = TaskName;
+/*
+ * The fatal paths in bsp_start.c halt and never return: they mask every signal and
+ * then sleep in pause() for good. This stands in for pause() in the test
+ * executable, which the halt loop calls in place of the C library's, so a test can
+ * run a fatal path and get control back: it records that the BSP halted, whether the
+ * signals were masked by then, and jumps back to where the test set UT_Stub_HaltJump.
+ */
+jmp_buf  UT_Stub_HaltJump;
+uint32_t UT_Stub_PauseCount;
+bool     UT_Stub_PauseSignalsBlocked;
 
-    UT_DEFAULT_IMPL(OS_FreeRTOS_StackOverflow);
+/* A real pause() returns when a signal is handled; this makes the next call do so, once */
+bool UT_Stub_PauseReturnsOnce;
+
+int pause(void)
+{
+    sigset_t Current;
+
+    ++UT_Stub_PauseCount;
+
+    (void)pthread_sigmask(SIG_SETMASK, NULL, &Current);
+    UT_Stub_PauseSignalsBlocked = (sigismember(&Current, SIGALRM) == 1) && (sigismember(&Current, SIGUSR1) == 1);
+
+    if (UT_Stub_PauseReturnsOnce)
+    {
+        UT_Stub_PauseReturnsOnce = false;
+
+        return -1;
+    }
+
+    longjmp(UT_Stub_HaltJump, 1);
 }
 
-void OS_FreeRTOS_ApplicationExit(int Status)
-{
-    UT_Stub_LastExitStatus = Status;
+/* The console is the only way a fatal path reports, so what it writes is kept for the tests */
+char   UT_Stub_Console[256];
+size_t UT_Stub_ConsoleLen;
 
-    UT_DEFAULT_IMPL(OS_FreeRTOS_ApplicationExit);
+void OS_BSP_ConsoleOutput_Impl(const char *Str, size_t DataLen)
+{
+    if (DataLen > sizeof(UT_Stub_Console) - UT_Stub_ConsoleLen)
+    {
+        DataLen = sizeof(UT_Stub_Console) - UT_Stub_ConsoleLen;
+    }
+
+    memcpy(&UT_Stub_Console[UT_Stub_ConsoleLen], Str, DataLen);
+    UT_Stub_ConsoleLen += DataLen;
 }
 
 void OS_Application_Startup(void)

@@ -15,8 +15,15 @@
  *   the hook is checked for what it calls rather than for an exit status.
  */
 
+#include <setjmp.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <pthread.h>
 
 #include "utassert.h"
 #include "uttest.h"
@@ -28,6 +35,8 @@
 
 #include "osapi-common.h"
 #include "bsp-impl.h"
+
+#include "generic_freertos_bsp_internal.h"
 
 /* bsp_start.c's main(), renamed at build time */
 int OS_BSP_TestMain(int argc, char *argv[]);
@@ -41,9 +50,8 @@ void vApplicationGetTimerTaskMemory(StaticTask_t          **ppxTimerTaskTCBBuffe
                                     configSTACK_DEPTH_TYPE *puxTimerTaskStackSize);
 void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName);
 
-/* Halt in bsp_console.c; stubbed in ../stubs/freertos-bsp-start-stubs.c */
-void OS_FreeRTOS_StackOverflow(const char *TaskName);
-void OS_FreeRTOS_ApplicationExit(int Status);
+/* configASSERT's handler, declared by FreeRTOSConfig.h in a real build */
+void OS_FreeRTOS_AssertFailed(const char *File, int Line);
 
 /* Captured stub call arguments and controls, declared in freertos-bsp-start-stubs.c */
 extern TaskFunction_t         UT_Stub_StartupTask;
@@ -55,30 +63,87 @@ extern SemaphoreHandle_t      UT_Stub_LastTakeSem;
 extern TickType_t             UT_Stub_LastTakeTicks;
 extern SemaphoreHandle_t      UT_Stub_LastGiveSem;
 extern bool                   UT_Stub_SchedulerStarts;
-extern const char            *UT_Stub_LastOverflowTask;
-extern int                    UT_Stub_LastExitStatus;
+extern jmp_buf                UT_Stub_HaltJump;
+extern uint32_t               UT_Stub_PauseCount;
+extern bool                   UT_Stub_PauseSignalsBlocked;
+extern bool                   UT_Stub_PauseReturnsOnce;
+extern char                   UT_Stub_Console[];
+extern size_t                 UT_Stub_ConsoleLen;
 
 /* The status the application sets from inside OS_Application_Run() */
 static int32 AppExitCode;
 
 /*
- * How the application ends depends on the port. One that implements
- * vPortEndScheduler defines OSAL_FREERTOS_PORT_ENDS_SCHEDULER and the BSP ends
- * the scheduler; one that does not (the Cortex-M ports) leaves it undefined and
- * the BSP reports the translated exit status and halts instead. Either way,
- * Count is how many times the application has ended so far.
+ * The fatal paths halt instead of returning, so a case that reaches one runs it
+ * through UT_HALTING: the stand-in pause() in the stubs jumps back to the setjmp
+ * here instead of sleeping for good. The halt masked every signal on this thread on
+ * the way, so the mask is put back afterwards.
  */
+#define UT_HALTING(Call)                                  \
+    do                                                    \
+    {                                                     \
+        sigset_t Saved;                                   \
+                                                          \
+        (void)pthread_sigmask(SIG_SETMASK, NULL, &Saved); \
+        if (setjmp(UT_Stub_HaltJump) == 0)                \
+        {                                                 \
+            Call;                                         \
+        }                                                 \
+        (void)pthread_sigmask(SIG_SETMASK, &Saved, NULL); \
+    } while (0)
+
+/* What UT_Main reports when the BSP halted instead of returning */
+#define UT_HALTED (-1000)
+
+/*
+ * How the application ends depends on the port. One that implements
+ * vPortEndScheduler defines OSAL_FREERTOS_PORT_ENDS_SCHEDULER and main() returns
+ * the exit status once the BSP has ended the scheduler; one that does not (the
+ * Cortex-M ports) leaves it undefined and the BSP reports the translated exit
+ * status and halts, so main() never returns.
+ */
+#ifdef OSAL_FREERTOS_PORT_ENDS_SCHEDULER
+#define UT_RETURNED(Status) (Status)
+#else
+#define UT_RETURNED(Status) UT_HALTED
+#endif
+
+/* Runs main() and returns what it returned, or UT_HALTED if it halted. The console starts empty. */
+static int UT_Main(int argc, char *argv[])
+{
+    int Result = UT_HALTED;
+
+    UT_Stub_ConsoleLen = 0;
+
+    UT_HALTING(Result = OS_BSP_TestMain(argc, argv));
+
+    return Result;
+}
+
+static void AssertConsole(const char *Expected)
+{
+    UtAssert_STRINGBUF_EQ(UT_Stub_Console, UT_Stub_ConsoleLen, Expected, strlen(Expected));
+}
+
+/* Either way, Count is how many times the application has ended so far */
 static void AssertAppEnded(uint32 Count, int Status)
 {
 #ifdef OSAL_FREERTOS_PORT_ENDS_SCHEDULER
     (void)Status;
 
     UtAssert_STUB_COUNT(vTaskEndScheduler, Count);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_ApplicationExit, 0);
+    UtAssert_UINT32_EQ(UT_Stub_PauseCount, 0);
 #else
-    UtAssert_STUB_COUNT(OS_FreeRTOS_ApplicationExit, Count);
-    UtAssert_INT32_EQ(UT_Stub_LastExitStatus, Status);
+    UtAssert_UINT32_EQ(UT_Stub_PauseCount, Count);
     UtAssert_STUB_COUNT(vTaskEndScheduler, 0);
+
+    if (Count > 0)
+    {
+        char Report[40];
+
+        (void)snprintf(Report, sizeof(Report), "APPLICATION EXIT %d\n", Status);
+        AssertConsole(Report);
+    }
 #endif
 }
 
@@ -103,7 +168,7 @@ void Test_Main_NormalShutdown(void)
 {
     char *argv[] = { "prog", "arg" };
 
-    UtAssert_INT32_EQ(OS_BSP_TestMain(2, argv), EXIT_SUCCESS);
+    UtAssert_INT32_EQ(UT_Main(2, argv), UT_RETURNED(EXIT_SUCCESS));
 
     /* arguments saved, mutex and startup task created, the application ran, then the scheduler ended */
     UtAssert_UINT32_EQ(OS_BSP_Global.ArgC, 2);
@@ -126,16 +191,16 @@ void Test_Main_AppExitStatus(void)
     UT_SetHookFunction(UT_KEY(OS_Application_Run), SetAppExitCodeHook, NULL);
 
     AppExitCode = 7;
-    UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), 7);
+    UtAssert_INT32_EQ(UT_Main(0, NULL), UT_RETURNED(7));
     AssertAppEnded(1, 7);
 
     AppExitCode = OS_ERROR;
-    UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), EXIT_FAILURE);
+    UtAssert_INT32_EQ(UT_Main(0, NULL), UT_RETURNED(EXIT_FAILURE));
     AssertAppEnded(2, EXIT_FAILURE);
 
     /* only the low 7 bits pass through */
     AppExitCode = 0x85;
-    UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), 0x05);
+    UtAssert_INT32_EQ(UT_Main(0, NULL), UT_RETURNED(0x05));
     AssertAppEnded(3, 0x05);
 }
 
@@ -144,7 +209,7 @@ void Test_Main_SchedulerFailsToStart(void)
     /* vTaskStartScheduler() returns at once, so the startup task never runs */
     UT_Stub_SchedulerStarts = false;
 
-    UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), EXIT_FAILURE);
+    UtAssert_INT32_EQ(UT_Main(0, NULL), EXIT_FAILURE);
 
     UtAssert_STUB_COUNT(vTaskStartScheduler, 1);
     UtAssert_STUB_COUNT(OS_Application_Startup, 0);
@@ -157,7 +222,7 @@ void Test_Main_TaskCreateFails(void)
 {
     UT_SetDefaultReturnValue(UT_KEY(xTaskCreate), -1);
 
-    UtAssert_INT32_EQ(OS_BSP_TestMain(0, NULL), EXIT_FAILURE);
+    UtAssert_INT32_EQ(UT_Main(0, NULL), EXIT_FAILURE);
 
     /* without the startup task there is nothing for a scheduler to run */
     UtAssert_STUB_COUNT(vTaskStartScheduler, 0);
@@ -167,15 +232,58 @@ void Test_StackOverflowHook(void)
 {
     /*
      * The kernel calls the hook from inside its task switch, so it must halt
-     * through OS_FreeRTOS_StackOverflow and leave the scheduler alone: ending it
-     * there would delete the idle task the switch is about to pick from.
+     * and leave the scheduler alone: ending it there would delete the idle task
+     * the switch is about to pick from.
      */
-    vApplicationStackOverflowHook(NULL, "task");
+    UT_HALTING(vApplicationStackOverflowHook(NULL, "task"));
 
-    UtAssert_STUB_COUNT(OS_FreeRTOS_StackOverflow, 1);
-    UtAssert_True(strcmp(UT_Stub_LastOverflowTask, "task") == 0, "overflowing task reported by name");
-    AssertAppEnded(0, 0);
+    AssertConsole("STACK OVERFLOW task\n");
+    UtAssert_UINT32_EQ(UT_Stub_PauseCount, 1);
+    UtAssert_True(UT_Stub_PauseSignalsBlocked, "signals masked before halting");
+    UtAssert_STUB_COUNT(vTaskEndScheduler, 0);
     UtAssert_INT32_EQ(OS_BSP_Global.AppStatus, OS_SUCCESS);
+
+    /* a second overflow while halting skips the report but still halts */
+    UT_HALTING(vApplicationStackOverflowHook(NULL, "other"));
+    AssertConsole("STACK OVERFLOW task\n");
+    UtAssert_UINT32_EQ(UT_Stub_PauseCount, 2);
+}
+
+void Test_AssertFailed(void)
+{
+    /* reports the file and line, masks interrupts and halts */
+    UT_HALTING(OS_FreeRTOS_AssertFailed("file.c", 12345));
+    AssertConsole("ASSERT file.c:12345\n");
+    UtAssert_UINT32_EQ(UT_Stub_PauseCount, 1);
+    UtAssert_True(UT_Stub_PauseSignalsBlocked, "signals masked before halting");
+
+    /* a fatal error raised while reporting another skips the report but still halts */
+    UT_HALTING(OS_FreeRTOS_AssertFailed("other.c", 1));
+    AssertConsole("ASSERT file.c:12345\n");
+    UtAssert_UINT32_EQ(UT_Stub_PauseCount, 2);
+
+    /* line zero is one digit */
+    OS_BSP_GenericFreeRTOSGlobal.Halting = false;
+    UT_Stub_ConsoleLen                   = 0;
+    UT_HALTING(OS_FreeRTOS_AssertFailed("f", 0));
+    AssertConsole("ASSERT f:0\n");
+
+    /* a negative line is reported as zero */
+    OS_BSP_GenericFreeRTOSGlobal.Halting = false;
+    UT_Stub_ConsoleLen                   = 0;
+    UT_HALTING(OS_FreeRTOS_AssertFailed("f", -5));
+    AssertConsole("ASSERT f:0\n");
+}
+
+void Test_HaltKeepsSleeping(void)
+{
+    /* a sleep that ends is not the end of the halt: it goes back to sleep */
+    UT_Stub_PauseReturnsOnce = true;
+
+    UT_HALTING(OS_FreeRTOS_AssertFailed("file.c", 1));
+
+    UtAssert_UINT32_EQ(UT_Stub_PauseCount, 2);
+    UtAssert_True(!UT_Stub_PauseReturnsOnce, "the first sleep returned");
 }
 
 void Test_Shutdown_Impl(void)
@@ -183,15 +291,22 @@ void Test_Shutdown_Impl(void)
     /* the status handed to the exit is the translated one the application set */
     OS_BSP_SetExitCode(3);
 
-    OS_BSP_Shutdown_Impl();
+    UT_HALTING(OS_BSP_Shutdown_Impl());
 
     AssertAppEnded(1, 3);
+
+#ifndef OSAL_FREERTOS_PORT_ENDS_SCHEDULER
+    /* a second exit while halting skips the report but still halts */
+    UT_HALTING(OS_BSP_Shutdown_Impl());
+
+    AssertAppEnded(2, 3);
+#endif
 }
 
 void Test_Lock_Unlock(void)
 {
     /* main() creates the console mutex that the lock functions use */
-    OS_BSP_TestMain(0, NULL);
+    UT_Main(0, NULL);
 
     OS_BSP_Lock_Impl();
     UtAssert_True(UT_Stub_LastTakeSem == (SemaphoreHandle_t)UT_Stub_LastCreateMutexBuffer,
@@ -229,17 +344,20 @@ void Osapi_Test_Setup(void)
 {
     UT_ResetState(0);
     memset(&OS_BSP_Global, 0, sizeof(OS_BSP_Global));
-    UT_Stub_StartupTask           = NULL;
-    UT_Stub_LastCreateName        = NULL;
-    UT_Stub_LastCreateStackDepth  = 0;
-    UT_Stub_LastCreatePriority    = 0;
-    UT_Stub_LastCreateMutexBuffer = NULL;
-    UT_Stub_LastTakeSem           = NULL;
-    UT_Stub_LastTakeTicks         = 0;
-    UT_Stub_LastGiveSem           = NULL;
-    UT_Stub_SchedulerStarts       = true;
-    UT_Stub_LastExitStatus        = 0;
-    AppExitCode                   = 0;
+    UT_Stub_StartupTask                  = NULL;
+    UT_Stub_LastCreateName               = NULL;
+    UT_Stub_LastCreateStackDepth         = 0;
+    UT_Stub_LastCreatePriority           = 0;
+    UT_Stub_LastCreateMutexBuffer        = NULL;
+    UT_Stub_LastTakeSem                  = NULL;
+    UT_Stub_LastTakeTicks                = 0;
+    UT_Stub_LastGiveSem                  = NULL;
+    UT_Stub_SchedulerStarts              = true;
+    UT_Stub_PauseCount                   = 0;
+    UT_Stub_PauseSignalsBlocked          = false;
+    UT_Stub_ConsoleLen                   = 0;
+    OS_BSP_GenericFreeRTOSGlobal.Halting = false;
+    AppExitCode                          = 0;
 }
 
 void Osapi_Test_Teardown(void)
@@ -255,6 +373,8 @@ void UtTest_Setup(void)
     ADD_TEST(Main_SchedulerFailsToStart);
     ADD_TEST(Main_TaskCreateFails);
     ADD_TEST(StackOverflowHook);
+    ADD_TEST(AssertFailed);
+    ADD_TEST(HaltKeepsSleeping);
     ADD_TEST(Shutdown_Impl);
     ADD_TEST(Lock_Unlock);
     ADD_TEST(StaticAllocationHooks);
