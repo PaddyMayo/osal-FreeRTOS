@@ -3,6 +3,12 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
+#include "timers.h"
+
+#if defined(OSAL_FREERTOS_PORT_POSIX)
+/* The POSIX port's own function, declared in its portmacro.h */
+void vPortThreadDying(void *pxTaskToDelete, volatile BaseType_t *pxPendYield);
+#endif
 
 #include "os-shared-task.h"
 #include "os-shared-idmap.h"
@@ -131,8 +137,9 @@ static void OS_FreeRTOS_TcbRelease(OS_impl_task_tcb_t *entry)
  *           Called through portCLEAN_UP_TCB once the kernel is finished
  *           with a deleted task: releases the TCB pool entry the task held,
  *           and the heap stack OS_TaskCreate_Impl allocated for it, if any.
- *           Runs in the idle task for a task that deleted itself, so it
- *           must not block. It leaves the task table slot alone: OSAL freed
+ *           Runs in the timer task for a task that deleted itself (see
+ *           OS_FreeRTOS_DeleteSelf), or in the idle task if the timer queue
+ *           was full, so it must not block. It leaves the task table slot alone: OSAL freed
  *           that when the task was deleted and it may belong to a newer task
  *           by now. See prototype in os-impl-tasks.h.
  *
@@ -190,7 +197,6 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
     OS_impl_task_tcb_t             *entry;
     OS_task_internal_record_t      *task;
     configSTACK_DEPTH_TYPE          stack_depth;
-    uint32                          i;
 
     memset(&arg, 0, sizeof(arg));
 
@@ -202,12 +208,17 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
     /*
      * Wait for a TCB pool entry. A task that has exited still holds its entry
      * until the kernel finishes deleting it, which for a task that deleted
-     * itself is when the idle task next runs, while OSAL has already given
-     * its table slot back. So a create right after an exit can find every
-     * entry taken; waiting here (no OSAL lock is held) lets the idle task run
-     * and free one, instead of failing a create that has a free slot. The wait
-     * is bounded because idle can be kept off the CPU by a task that never
-     * blocks; the create then fails and the caller may try again.
+     * itself would be when the idle task next runs; OS_FreeRTOS_DeleteSelf()
+     * has the timer task do it instead, as soon as the exiting task has handed
+     * itself over (the idle task only if the timer queue was full). OSAL has
+     * already given the table slot back, so a create right after an exit can
+     * still find every entry taken; waiting here (no OSAL lock is held) lets
+     * the timer task run and free one, instead of failing a create that has a
+     * free slot. The wait is bounded because a task that never blocks can keep
+     * the timer task (and the idle task) off the CPU; the create then fails
+     * with OS_ERR_TRY_AGAIN and the caller may try again. The port cannot make
+     * either run: every task must block now and then (a delay, or a wait on a
+     * queue, semaphore or notification).
      */
     if (xSemaphoreTake(OS_FreeRTOS_TcbSem, OS_FreeRTOS_MsToTicks(OS_FREERTOS_TCB_WAIT_MS)) != pdTRUE)
     {
@@ -217,7 +228,7 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
     entry = NULL;
 
     taskENTER_CRITICAL();
-    for (i = 0; i < OS_MAX_TASKS; ++i)
+    for (uint32 i = 0; i < OS_MAX_TASKS; ++i)
     {
         if (!OS_impl_task_tcb_pool[i].in_use)
         {
@@ -282,6 +293,59 @@ int32 OS_TaskDetach_Impl(const OS_object_token_t *token)
 
 /*----------------------------------------------------------------
  *
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           Runs in the timer task: deletes a task that handed itself over
+ *           in OS_FreeRTOS_DeleteSelf(). Deleting another task makes the
+ *           kernel free its TCB at once and call portCLEAN_UP_TCB, where a
+ *           task deleting itself has to wait for the idle task to do that.
+ *
+ *-----------------------------------------------------------------*/
+// The signature is the kernel's PendedFunction_t, the first parameter cannot be const
+// cppcheck-suppress constParameterCallback
+static void OS_FreeRTOS_DeleteHandedOver(void *pvParameter1, uint32_t ulParameter2)
+{
+    (void)ulParameter2;
+
+    vTaskDelete((TaskHandle_t)pvParameter1);
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           Ends the calling task without making the freeing of its TCB
+ *           wait for the idle task, which a task that never blocks can keep
+ *           off the CPU: the timer task, which runs at the highest priority,
+ *           is asked to delete it, and it suspends itself until that
+ *           happens. If the timer queue is full it deletes itself, and the
+ *           idle task frees the TCB. Never returns.
+ *
+ *-----------------------------------------------------------------*/
+static void OS_FreeRTOS_DeleteSelf(void)
+{
+    if (xTimerPendFunctionCall(OS_FreeRTOS_DeleteHandedOver, xTaskGetCurrentTaskHandle(), 0, 0) == pdTRUE)
+    {
+#if defined(OSAL_FREERTOS_PORT_POSIX)
+        /*
+         * The POSIX port runs each task on a pthread and deletes a task by cancelling
+         * its thread. A thread that is only suspended is cancelled inside its wait on a
+         * condition variable, and dies owning that wait's mutex, so whoever signals the
+         * thread next depends on the host recovering a mutex whose owner has died. A
+         * task marked as dying has its thread leave by itself as it switches away
+         * instead, which is how the kernel itself ends a task that deletes itself
+         * (portPRE_TASK_DELETE_HOOK), and nothing waits on that recovery. The other
+         * ports have no thread to cancel and need nothing here.
+         */
+        vPortThreadDying(xTaskGetCurrentTaskHandle(), NULL);
+#endif
+        vTaskSuspend(NULL);
+    }
+
+    /* NULL tells FreeRTOS to delete the calling task */
+    vTaskDelete(NULL);
+}
+
+/*----------------------------------------------------------------
+ *
  *  Purpose: Implemented per internal OSAL API
  *           See prototype for argument/return detail
  *
@@ -303,8 +367,8 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
         osal_task_entry                  delete_hook;
 
         /*
-         * A task deleting itself never gets back out of vTaskDelete(), so
-         * OS_TaskDelete() would never finish the delete or call the hook.
+         * A task deleting itself never gets back out of the delete, so
+         * OS_TaskDelete() would never finish it or call the hook.
          * Do both here, in the order it does: release the slot (and with it
          * the lock held on it), then the hook, which must not run locked.
          * The TCB is cleaned up later through portCLEAN_UP_TCB.
@@ -319,9 +383,13 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
         {
             delete_hook();
         }
-    }
 
-    vTaskDelete(handle);
+        OS_FreeRTOS_DeleteSelf();
+    }
+    else
+    {
+        vTaskDelete(handle);
+    }
 
     return OS_SUCCESS;
 }
@@ -334,8 +402,7 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
  *-----------------------------------------------------------------*/
 void OS_TaskExit_Impl(void)
 {
-    /* NULL tells FreeRTOS to delete the calling task */
-    vTaskDelete(NULL);
+    OS_FreeRTOS_DeleteSelf();
 }
 
 /*----------------------------------------------------------------
