@@ -57,36 +57,54 @@ else ()
 endif ()
 
 # ---- The firmware under test -------------------------------------------------
-add_executable(sim_smoke src/smoke.c)
-target_link_libraries(sim_smoke PRIVATE osal_bsp osal)
+# smoke runs on the kernel alone. The others call the OSAL API, which does not
+# link on the port yet (only common, queue and tasks are implemented), so they
+# take src/osal_stubs.c for the rest.
+set(SIM_FIRMWARE smoke)
+set(SIM_FIRMWARE_OSAL task_reuse)
+if ("${PORT}" STREQUAL "GCC_ARM_CM0")
+    # The micro:bit has 16 KB of RAM, OSAL's object tables alone overflow it
+    set(SIM_FIRMWARE_OSAL)
+endif ()
 
-# ---- Tests ---------------------------------------------------------------------
 string(TOLOWER "${PORT}" PORT_LOWER)
-set(TEST_NAME sim-${PORT_LOWER}${TEST_SUFFIX}-smoke)
 
 if (QEMU_KIND STREQUAL "board")
     find_program(QEMU_GDB NAMES gdb-multiarch arm-none-eabi-gdb)
     find_program(QEMU_SYSTEM_PATH NAMES ${QEMU_SYSTEM})
     if (NOT QEMU_GDB OR NOT QEMU_SYSTEM_PATH)
         message(WARNING "gdb-multiarch and ${QEMU_SYSTEM} are needed to run the tests, so none are registered")
-        return()
     endif ()
-
-    add_test(NAME ${TEST_NAME}
-        COMMAND ${QEMU_GDB} -q -batch -x ${CMAKE_CURRENT_SOURCE_DIR}/gdb/run_firmware_test.py --args $<TARGET_FILE:sim_smoke>
-    )
-    set_tests_properties(${TEST_NAME} PROPERTIES
-        ENVIRONMENT "QEMU_SYSTEM=${QEMU_SYSTEM_PATH};QEMU_MACHINE=${QEMU_MACHINE}"
-        TIMEOUT 120
-    )
 else ()
-    # The BSP returns the application's status from main, so the exit status is the result
     find_program(QEMU_USER_PATH NAMES ${QEMU_USER})
     if (NOT QEMU_USER_PATH)
         message(WARNING "${QEMU_USER} is needed to run the tests, so none are registered")
-        return()
+    endif ()
+endif ()
+
+foreach (FIRMWARE IN LISTS SIM_FIRMWARE SIM_FIRMWARE_OSAL)
+    add_executable(sim_${FIRMWARE} src/${FIRMWARE}.c)
+    target_link_libraries(sim_${FIRMWARE} PRIVATE osal_bsp osal)
+    if (FIRMWARE IN_LIST SIM_FIRMWARE_OSAL)
+        target_sources(sim_${FIRMWARE} PRIVATE src/osal_stubs.c)
+        target_include_directories(sim_${FIRMWARE} PRIVATE ${OSAL_SOURCE_DIR}/src/os/shared/inc)
     endif ()
 
-    add_test(NAME ${TEST_NAME} COMMAND ${QEMU_USER_PATH} -L ${QEMU_USER_SYSROOT} $<TARGET_FILE:sim_smoke>)
-    set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 120)
-endif ()
+    set(TEST_NAME sim-${PORT_LOWER}${TEST_SUFFIX}-${FIRMWARE})
+
+    if (QEMU_KIND STREQUAL "board")
+        if (QEMU_GDB AND QEMU_SYSTEM_PATH)
+            add_test(NAME ${TEST_NAME}
+                COMMAND ${QEMU_GDB} -q -batch -x ${CMAKE_CURRENT_SOURCE_DIR}/gdb/run_firmware_test.py --args $<TARGET_FILE:sim_${FIRMWARE}>
+            )
+            set_tests_properties(${TEST_NAME} PROPERTIES
+                ENVIRONMENT "QEMU_SYSTEM=${QEMU_SYSTEM_PATH};QEMU_MACHINE=${QEMU_MACHINE}"
+                TIMEOUT 120
+            )
+        endif ()
+    elseif (QEMU_USER_PATH)
+        # The BSP returns the application's status from main, so the exit status is the result
+        add_test(NAME ${TEST_NAME} COMMAND ${QEMU_USER_PATH} -L ${QEMU_USER_SYSROOT} $<TARGET_FILE:sim_${FIRMWARE}>)
+        set_tests_properties(${TEST_NAME} PROPERTIES TIMEOUT 120)
+    endif ()
+endforeach ()
