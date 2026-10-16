@@ -61,8 +61,23 @@ extern TickType_t         UT_Stub_LastTakeTicks;
 /* Captured OS_TaskEntryPoint() argument, declared in osal-shared-stubs.c */
 extern osal_id_t UT_Stub_LastEntryPointId;
 
+/* OS_ObjectIdFinalizeDelete() call record, declared in osal-shared-stubs.c */
+extern uint32 UT_Stub_FinalizeDeleteCount;
+extern int32  UT_Stub_LastFinalizeDeleteStatus;
+extern uint32 UT_Stub_LastFinalizeDeleteIndex;
+
 extern void  OS_FreeRTOS_TaskCleanup(const void *tcb);
 extern int32 OS_FreeRTOS_TaskInit(void);
+
+/* Delete hook for the self-delete test: records how often it ran and whether the slot was released first */
+static uint32 UT_DeleteHookCalls;
+static uint32 UT_DeleteHookSawFinalizeCount;
+
+static void UT_DeleteHook(void)
+{
+    ++UT_DeleteHookCalls;
+    UT_DeleteHookSawFinalizeCount = UT_Stub_FinalizeDeleteCount;
+}
 
 #define UT_TASK_TOKEN(idx)                                                                              \
     (OS_object_token_t)                                                                                 \
@@ -222,11 +237,33 @@ void Test_OS_TaskDelete_Impl(void)
 
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
 
-    /* the kernel frees the task right away; the stack still goes through the portCLEAN_UP_TCB hook, not here */
+    /* another task: the kernel frees it right away; the stack still goes through the portCLEAN_UP_TCB hook, not here */
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
     UtAssert_True(UT_Stub_LastDeletedHandle == (TaskHandle_t)0x4242, "vTaskDelete() called with task handle");
     UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
     UtAssert_STUB_COUNT(vPortFree, 0);
+    UtAssert_UINT32_EQ(UT_Stub_FinalizeDeleteCount, 0);
+
+    /* the calling task: vTaskDelete() will not return, so OS_TaskDelete() never would either.
+     * The slot is released first, then the delete hook runs (unlocked), then the task goes. */
+    OS_task_table[0].delete_hook_pointer = UT_DeleteHook;
+    UT_TaskTest_SetImplTaskId(UT_INDEX_0, UT_Stub_CurrentTaskHandle);
+    UT_Stub_LastDeletedHandle = NULL;
+    UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
+    UtAssert_UINT32_EQ(UT_Stub_FinalizeDeleteCount, 1);
+    UtAssert_INT32_EQ(UT_Stub_LastFinalizeDeleteStatus, OS_SUCCESS);
+    UtAssert_UINT32_EQ(UT_Stub_LastFinalizeDeleteIndex, UT_INDEX_0);
+    UtAssert_UINT32_EQ(UT_DeleteHookCalls, 1);
+    UtAssert_UINT32_EQ(UT_DeleteHookSawFinalizeCount, 1);
+    UtAssert_True(UT_Stub_LastDeletedHandle == UT_Stub_CurrentTaskHandle, "vTaskDelete() called for the calling task");
+    UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
+
+    /* the calling task, no delete hook registered -> none called */
+    OS_task_table[0].delete_hook_pointer = NULL;
+    UT_TaskTest_SetImplTaskId(UT_INDEX_0, UT_Stub_CurrentTaskHandle);
+    UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
+    UtAssert_UINT32_EQ(UT_Stub_FinalizeDeleteCount, 2);
+    UtAssert_UINT32_EQ(UT_DeleteHookCalls, 1);
 }
 
 void Test_OS_FreeRTOS_TaskCleanup(void)
@@ -375,6 +412,12 @@ void Osapi_Test_Setup(void)
     memset(UT_Ref_OS_impl_task_table, 0, UT_Ref_OS_impl_task_table_SIZE);
     memset(UT_Ref_OS_impl_task_tcb_pool, 0, UT_Ref_OS_impl_task_tcb_pool_SIZE);
     UT_Stub_ResetTLS();
+
+    UT_Stub_FinalizeDeleteCount      = 0;
+    UT_Stub_LastFinalizeDeleteStatus = 0;
+    UT_Stub_LastFinalizeDeleteIndex  = 0;
+    UT_DeleteHookCalls               = 0;
+    UT_DeleteHookSawFinalizeCount    = 0;
 }
 
 void Osapi_Test_Teardown(void)

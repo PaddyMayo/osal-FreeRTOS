@@ -284,12 +284,39 @@ int32 OS_TaskDetach_Impl(const OS_object_token_t *token)
 int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
 {
     OS_impl_task_internal_record_t *impl;
+    TaskHandle_t                    handle;
 
-    impl = OS_OBJECT_TABLE_GET(OS_impl_task_table, *token);
-
-    vTaskDelete(impl->id);
+    impl   = OS_OBJECT_TABLE_GET(OS_impl_task_table, *token);
+    handle = impl->id;
 
     impl->id = NULL;
+
+    if (handle == xTaskGetCurrentTaskHandle())
+    {
+        const OS_task_internal_record_t *task;
+        OS_object_token_t                local_token;
+        osal_task_entry                  delete_hook;
+
+        /*
+         * A task deleting itself never gets back out of vTaskDelete(), so
+         * OS_TaskDelete() would never finish the delete or call the hook.
+         * Do both here, in the order it does: release the slot (and with it
+         * the lock held on it), then the hook, which must not run locked.
+         * The TCB is cleaned up later through portCLEAN_UP_TCB.
+         */
+        task        = OS_OBJECT_TABLE_GET(OS_task_table, *token);
+        delete_hook = task->delete_hook_pointer;
+        local_token = *token;
+
+        (void)OS_ObjectIdFinalizeDelete(OS_SUCCESS, &local_token);
+
+        if (delete_hook != NULL)
+        {
+            delete_hook();
+        }
+    }
+
+    vTaskDelete(handle);
 
     return OS_SUCCESS;
 }

@@ -11,6 +11,7 @@
  */
 
 #include "os-shared-common.h"
+#include "os-shared-idmap.h"
 #include "os-shared-task.h"
 
 /* Normally defined in osapi-common.c */
@@ -33,4 +34,25 @@ osal_id_t UT_Stub_LastEntryPointId;
 void OS_TaskEntryPoint(osal_id_t global_task_id)
 {
     UT_Stub_LastEntryPointId = global_task_id;
+}
+
+/*
+ * Normally in osapi-idmap.c. OS_TaskDelete_Impl() calls it directly when a
+ * task deletes itself, since OS_TaskDelete() never regains control then. Only
+ * the call is recorded; tests that care whether it happened before another
+ * step read the count from inside that step.
+ */
+uint32 UT_Stub_FinalizeDeleteCount;
+int32  UT_Stub_LastFinalizeDeleteStatus;
+uint32 UT_Stub_LastFinalizeDeleteIndex;
+
+// token must stay non-const to match the os-shared-idmap.h prototype
+// cppcheck-suppress constParameterPointer
+int32 OS_ObjectIdFinalizeDelete(int32 operation_status, OS_object_token_t *token)
+{
+    ++UT_Stub_FinalizeDeleteCount;
+    UT_Stub_LastFinalizeDeleteStatus = operation_status;
+    UT_Stub_LastFinalizeDeleteIndex  = token->obj_idx;
+
+    return operation_status;
 }
