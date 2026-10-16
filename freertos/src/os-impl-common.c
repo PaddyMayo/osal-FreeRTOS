@@ -22,6 +22,8 @@
 #include "os-shared-idmap.h"
 
 #include "os-impl-tasks.h"
+#include "os-impl-files.h"
+#include "os-impl-filesys.h"
 
 static StaticSemaphore_t OS_FreeRTOS_IdleSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_IdleSem;
@@ -37,6 +39,16 @@ int32 OS_API_Impl_Init(osal_objtype_t idtype)
     if (idtype == OS_OBJECT_TYPE_OS_TASK)
     {
         return OS_FreeRTOS_TaskInit();
+    }
+
+    if (idtype == OS_OBJECT_TYPE_OS_STREAM)
+    {
+        return OS_FreeRTOS_FileInit();
+    }
+
+    if (idtype == OS_OBJECT_TYPE_OS_FILESYS)
+    {
+        return OS_FreeRTOS_FileSysInit();
     }
 
     if (idtype != OS_OBJECT_TYPE_UNDEFINED)
