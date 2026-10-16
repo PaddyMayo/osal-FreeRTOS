@@ -205,9 +205,14 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
      * itself is when the idle task next runs, while OSAL has already given
      * its table slot back. So a create right after an exit can find every
      * entry taken; waiting here (no OSAL lock is held) lets the idle task run
-     * and free one, instead of failing a create that has a free slot.
+     * and free one, instead of failing a create that has a free slot. The wait
+     * is bounded because idle can be kept off the CPU by a task that never
+     * blocks; the create then fails and the caller may try again.
      */
-    (void)xSemaphoreTake(OS_FreeRTOS_TcbSem, portMAX_DELAY);
+    if (xSemaphoreTake(OS_FreeRTOS_TcbSem, OS_FreeRTOS_MsToTicks(OS_FREERTOS_TCB_WAIT_MS)) != pdTRUE)
+    {
+        return OS_ERR_TRY_AGAIN;
+    }
 
     entry = NULL;
 

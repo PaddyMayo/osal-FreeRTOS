@@ -12,6 +12,7 @@
  *     self     the task deletes itself with OS_TaskDelete(), delete hook runs
  *     other    another task deletes it, the kernel frees the TCB at once
  *     full     every slot is taken, so a further create must fail cleanly
+ *     starved  the idle task cannot run, so a create must give up, not hang
  *
  *   The exiting tasks run above the startup task so they are gone before the
  *   next create, and the startup task never lets the idle task run in between:
@@ -147,7 +148,7 @@ static int32 Reuse_Create(osal_id_t *Id, uint32 Index, osal_task_entry Entry, os
  * run) leaves its slot free but its TCB with the kernel, so after
  * OS_MAX_TASKS rounds a create finds the pool empty and has to wait for idle.
  */
-static void Reuse_Churn(osal_task_entry Entry, int FirstCheck)
+static void Reuse_Churn(osal_task_entry Entry, uint32 Rounds, int FirstCheck)
 {
     osal_id_t Id;
     uint32    Round;
@@ -155,7 +156,7 @@ static void Reuse_Churn(osal_task_entry Entry, int FirstCheck)
 
     TasksFinished = 0;
 
-    for (Round = 0; Round < REUSE_ROUNDS; ++Round)
+    for (Round = 0; Round < Rounds; ++Round)
     {
         if (Reuse_Create(&Id, Round, Entry, REUSE_FAST) == OS_SUCCESS)
         {
@@ -164,7 +165,60 @@ static void Reuse_Churn(osal_task_entry Entry, int FirstCheck)
         }
     }
 
-    Reuse_Check(Created == REUSE_ROUNDS, FirstCheck);
+    Reuse_Check(Created == Rounds, FirstCheck);
+}
+
+/* Never blocks, so the idle task never runs while it is the highest task that can */
+// The parameter must stay non-const to match FreeRTOS's TaskFunction_t signature
+// cppcheck-suppress constParameterCallback
+static void Reuse_SpinnerTask(void *Parameter)
+{
+    (void)Parameter;
+
+    for (;;)
+    {
+    }
+}
+
+/*
+ * The idle task is what frees an exited task's TCB, so a task that never blocks
+ * and runs above it keeps the pool empty. A create must give up with
+ * OS_ERR_TRY_AGAIN instead of waiting for ever, and work again once idle runs.
+ */
+static void Reuse_StarvedIdle(void)
+{
+    osal_id_t    Id;
+    TaskHandle_t Spinner = NULL;
+    TickType_t   Start;
+    TickType_t   Waited;
+    int32        Status;
+
+    /* Let idle free whatever the churn left, then take every entry with tasks that have exited */
+    (void)OS_TaskDelay(REUSE_WAIT_MS * 5U);
+    Reuse_Churn(Reuse_ExitTask, OS_MAX_TASKS, 50);
+
+    /* Above idle, below this task: it runs only while this task waits */
+    Reuse_Check(xTaskCreate(Reuse_SpinnerTask, "spin", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &Spinner)
+                    == pdPASS,
+                52);
+
+    Start  = xTaskGetTickCount();
+    Status = Reuse_Create(&Id, OS_MAX_TASKS, Reuse_ExitTask, REUSE_FAST);
+    Waited = xTaskGetTickCount() - Start;
+
+    Reuse_Check(Status == OS_ERR_TRY_AGAIN, 53);
+    Reuse_Check(Waited < pdMS_TO_TICKS(REUSE_TIMEOUT_MS), 54);
+
+    /* Stop starving idle: the entries come back and a create works again */
+    if (Spinner != NULL)
+    {
+        vTaskDelete(Spinner);
+    }
+    (void)OS_TaskDelay(REUSE_WAIT_MS * 5U);
+
+    TasksFinished = 0;
+    Reuse_Check(Reuse_Create(&Id, OS_MAX_TASKS, Reuse_ExitTask, REUSE_FAST) == OS_SUCCESS, 55);
+    Reuse_Check(Reuse_WaitFor(&TasksFinished, 1), 56);
 }
 
 /* Fill every slot with a task that stays, see a further create refused, then delete them */
@@ -225,12 +279,13 @@ void OS_Application_Startup(void)
         return;
     }
 
-    Reuse_Churn(Reuse_ExitTask, 10);
+    Reuse_Churn(Reuse_ExitTask, REUSE_ROUNDS, 10);
 
     DeleteHookCalls = 0;
-    Reuse_Churn(Reuse_SelfDeleteTask, 20);
+    Reuse_Churn(Reuse_SelfDeleteTask, REUSE_ROUNDS, 20);
     Reuse_Check(DeleteHookCalls == REUSE_ROUNDS, 30);
 
+    Reuse_StarvedIdle();
     Reuse_FullAndDeleteOther();
 
     OS_BSP_SetExitCode(Failed == 0 ? OS_SUCCESS : Failed);
