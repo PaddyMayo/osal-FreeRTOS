@@ -17,6 +17,7 @@ Environment:
     QEMU_MACHINE       the machine to run on
     EXPECT             idle (default) or busy
     FIRMWARE_TIMEOUT   seconds to wait for the halt, default 30
+    SETTLE_SECONDS     how long the halt gets to finish before it is watched, default 0.5
     MEASURE_SECONDS    how long to watch the halted firmware, default 2
 """
 
@@ -32,6 +33,7 @@ QEMU_MACHINE = os.environ["QEMU_MACHINE"]
 EXPECT = os.environ.get("EXPECT", "idle")
 TIMEOUT = float(os.environ.get("FIRMWARE_TIMEOUT", "30"))
 MEASURE = float(os.environ.get("MEASURE_SECONDS", "2"))
+SETTLE = float(os.environ.get("SETTLE_SECONDS", "0.5"))
 
 # Of one host CPU, what a sleeping emulator may use and what a spinning one must
 IDLE_LIMIT = 0.20
@@ -148,8 +150,10 @@ def main():
             finish(1, "FAIL: the firmware did not halt within %g s" % TIMEOUT)
         print("halted in the %s path" % halted_in)
 
-    # The halt itself is not run to completion: release the breakpoints, then watch it
+    # The breakpoint is at the entry of the halt function, before it has masked
+    # anything: one more tick can still arrive. Let the halt finish first, then watch it.
     gdb.execute("delete breakpoints")
+    run_for(SETTLE)
 
     tick_before = tick_count()
     cpu_before = cpu_seconds(pid)
