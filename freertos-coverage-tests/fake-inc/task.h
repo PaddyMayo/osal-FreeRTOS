@@ -47,6 +47,10 @@ void OCS_vTaskDelay(TickType_t xTicksToDelay);
 
 void OCS_vTaskPrioritySet(TaskHandle_t xTask, UBaseType_t uxNewPriority);
 
+void OCS_vTaskEnterCritical(void);
+
+void OCS_vTaskExitCritical(void);
+
 void *OCS_pvTaskGetThreadLocalStoragePointer(TaskHandle_t xTaskToQuery, int xIndex);
 
 void OCS_vTaskSetThreadLocalStoragePointer(TaskHandle_t xTaskToSet, int xIndex, void *pvValue);
@@ -59,7 +63,13 @@ void OCS_vTaskSetThreadLocalStoragePointer(TaskHandle_t xTaskToSet, int xIndex, 
 #define vTaskDelete                        OCS_vTaskDelete
 #define vTaskDelay                         OCS_vTaskDelay
 #define vTaskPrioritySet                   OCS_vTaskPrioritySet
+#define vTaskEnterCritical                 OCS_vTaskEnterCritical
+#define vTaskExitCritical                  OCS_vTaskExitCritical
 #define pvTaskGetThreadLocalStoragePointer OCS_pvTaskGetThreadLocalStoragePointer
 #define vTaskSetThreadLocalStoragePointer  OCS_vTaskSetThreadLocalStoragePointer
+
+/* Real FreeRTOS maps these onto the port's critical section, which on SMP also takes a spinlock */
+#define taskENTER_CRITICAL() vTaskEnterCritical()
+#define taskEXIT_CRITICAL()  vTaskExitCritical()
 
 #endif /* TASK_H */

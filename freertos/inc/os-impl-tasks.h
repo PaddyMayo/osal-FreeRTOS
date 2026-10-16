@@ -24,12 +24,31 @@
 typedef struct
 {
     TaskHandle_t id;
-    StaticTask_t tcb_buffer;
-    StackType_t *stack_buffer;
 } OS_impl_task_internal_record_t;
+
+/*
+ * The TCB and heap stack of a task live in a pool entry, not in the record
+ * above. OSAL releases a task's table slot as soon as it exits or is deleted,
+ * but the kernel only finishes with the TCB later (for a task that deleted
+ * itself, when the idle task next runs). Were the TCB part of the slot, a task
+ * created into that slot in between would find it still occupied.
+ */
+typedef struct
+{
+    StaticTask_t tcb;
+    StackType_t *stack; /* heap stack the port allocated, NULL when the caller supplied one */
+    bool         in_use;
+} OS_impl_task_tcb_t;
 
 /* Table where the OS object information is stored */
 extern OS_impl_task_internal_record_t OS_impl_task_table[OS_MAX_TASKS];
+
+/*
+ * One entry per task the table can hold. A task holds an entry from creation
+ * until the kernel has finished deleting it, so entries in use can exceed the
+ * live tasks; OS_TaskCreate_Impl waits for one to come free rather than fail.
+ */
+extern OS_impl_task_tcb_t OS_impl_task_tcb_pool[OS_MAX_TASKS];
 
 /*
  * Remaps an OSAL priority (0=highest .. OS_MAX_TASK_PRIORITY=lowest) into a
@@ -51,5 +70,8 @@ UBaseType_t OS_FreeRTOS_PriorityRemap(osal_priority_t priority);
 TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
 
 void OS_FreeRTOS_TaskCleanup(const void *tcb);
+
+/* Creates the semaphore that counts free TCB pool entries. Called from OS_API_Impl_Init(). */
+int32 OS_FreeRTOS_TaskInit(void);
 
 #endif /* OS_IMPL_TASKS_H */

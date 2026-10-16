@@ -18,6 +18,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "semphr.h"
 
 #define UT_STUB_TLS_SLOTS 4
 
@@ -92,6 +93,65 @@ void vTaskDelay(TickType_t xTicksToDelay)
     UT_Stub_LastDelayTicks = xTicksToDelay;
 
     UT_DEFAULT_IMPL(vTaskDelay);
+}
+
+void vTaskEnterCritical(void)
+{
+    UT_DEFAULT_IMPL(vTaskEnterCritical);
+}
+
+void vTaskExitCritical(void)
+{
+    UT_DEFAULT_IMPL(vTaskExitCritical);
+}
+
+/*
+ * The TCB pool's semaphore. A test makes the pool wait observable through
+ * the captured block time and the take/give counts.
+ */
+StaticSemaphore_t *UT_Stub_LastCountingSemBuffer;
+UBaseType_t        UT_Stub_LastCountingSemMax;
+UBaseType_t        UT_Stub_LastCountingSemInitial;
+SemaphoreHandle_t  UT_Stub_LastTakeSem;
+TickType_t         UT_Stub_LastTakeTicks;
+SemaphoreHandle_t  UT_Stub_LastGiveSem;
+
+SemaphoreHandle_t
+xSemaphoreCreateCountingStatic(UBaseType_t uxMaxCount, UBaseType_t uxInitialCount, StaticSemaphore_t *pxSemaphoreBuffer)
+{
+    int32 status;
+
+    UT_Stub_LastCountingSemBuffer  = pxSemaphoreBuffer;
+    UT_Stub_LastCountingSemMax     = uxMaxCount;
+    UT_Stub_LastCountingSemInitial = uxInitialCount;
+
+    status = UT_DEFAULT_IMPL(xSemaphoreCreateCountingStatic);
+
+    if (status < 0)
+    {
+        return NULL;
+    }
+
+    return (SemaphoreHandle_t)pxSemaphoreBuffer;
+}
+
+BaseType_t xSemaphoreTake(SemaphoreHandle_t xSemaphore, TickType_t xBlockTime)
+{
+    UT_Stub_LastTakeSem   = xSemaphore;
+    UT_Stub_LastTakeTicks = xBlockTime;
+
+    UT_DEFAULT_IMPL(xSemaphoreTake);
+
+    return pdTRUE;
+}
+
+BaseType_t xSemaphoreGive(SemaphoreHandle_t xSemaphore)
+{
+    UT_Stub_LastGiveSem = xSemaphore;
+
+    UT_DEFAULT_IMPL(xSemaphoreGive);
+
+    return pdTRUE;
 }
 
 void vTaskPrioritySet(TaskHandle_t xTask, UBaseType_t uxNewPriority)

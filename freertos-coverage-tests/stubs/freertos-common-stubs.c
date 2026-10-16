@@ -16,6 +16,10 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+#include "osapi-error.h"
+
+#include "os-impl-tasks.h"
+
 StaticSemaphore_t *UT_Stub_LastCreateSemBuffer;
 SemaphoreHandle_t  UT_Stub_LastTakeSem;
 TickType_t         UT_Stub_LastTakeTicks;
@@ -56,4 +60,23 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t xSemaphore)
     UT_DEFAULT_IMPL(xSemaphoreGive);
 
     return pdTRUE;
+}
+
+/*
+ * os-impl-common.c calls this for the task object type, but it lives in
+ * os-impl-tasks.c and is covered there. This runner links only the common
+ * module, so it gets a stand-in that can be made to fail.
+ */
+int32 OS_FreeRTOS_TaskInit(void)
+{
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_TaskInit);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
 }
