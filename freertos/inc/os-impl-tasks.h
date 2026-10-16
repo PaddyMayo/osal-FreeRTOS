@@ -71,9 +71,11 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
 
 /*
  * How long OS_TaskCreate_Impl() waits for a TCB pool entry before giving up with
- * OS_ERR_TRY_AGAIN. A task that exited leaves its entry to the idle task, which
- * frees it the next time it runs, so the wait only runs out when something
- * keeps idle off the CPU.
+ * OS_ERR_TRY_AGAIN. A task that exited leaves its entry to the timer task,
+ * which runs at the highest priority and frees it at once, or to the idle task
+ * if the timer queue was full. So the wait only runs out when something keeps
+ * them off the CPU: a task that never blocks. Every task must block now and
+ * then, the port cannot make either run.
  */
 #define OS_FREERTOS_TCB_WAIT_MS 100U
 

@@ -32,6 +32,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
+#include "timers.h"
 
 #include "os-shared-task.h"
 #include "os-shared-idmap.h"
@@ -41,6 +42,9 @@
 /* Captured stub call arguments, declared in freertos-task-stubs.c */
 extern TaskHandle_t           UT_Stub_CurrentTaskHandle;
 extern TaskHandle_t           UT_Stub_LastDeletedHandle;
+extern TaskHandle_t           UT_Stub_LastSuspendedHandle;
+extern PendedFunction_t       UT_Stub_LastPendedFunction;
+extern void                  *UT_Stub_LastPendedParameter;
 extern TaskHandle_t           UT_Stub_LastPriorityHandle;
 extern UBaseType_t            UT_Stub_LastPriorityValue;
 extern TickType_t             UT_Stub_LastDelayTicks;
@@ -256,15 +260,27 @@ void Test_OS_TaskDelete_Impl(void)
      * The slot is released first, then the delete hook runs (unlocked), then the task goes. */
     OS_task_table[0].delete_hook_pointer = UT_DeleteHook;
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, UT_Stub_CurrentTaskHandle);
-    UT_Stub_LastDeletedHandle = NULL;
+    UT_Stub_LastDeletedHandle = (TaskHandle_t)0x1;
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
     UtAssert_UINT32_EQ(UT_Stub_FinalizeDeleteCount, 1);
     UtAssert_INT32_EQ(UT_Stub_LastFinalizeDeleteStatus, OS_SUCCESS);
     UtAssert_UINT32_EQ(UT_Stub_LastFinalizeDeleteIndex, UT_INDEX_0);
     UtAssert_UINT32_EQ(UT_DeleteHookCalls, 1);
     UtAssert_UINT32_EQ(UT_DeleteHookSawFinalizeCount, 1);
-    UtAssert_True(UT_Stub_LastDeletedHandle == UT_Stub_CurrentTaskHandle, "vTaskDelete() called for the calling task");
     UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
+
+    /* ... which is handed to the timer task, and the caller suspends until it has gone; the
+     * stub returns from the suspend, so the delete of itself that follows is seen as well */
+    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
+    UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
+    UtAssert_STUB_COUNT(vTaskSuspend, 1);
+    UtAssert_NULL(UT_Stub_LastSuspendedHandle);
+    UtAssert_NULL(UT_Stub_LastDeletedHandle);
+
+    /* the timer task runs the handed function: the task is deleted from outside */
+    UT_Stub_LastDeletedHandle = NULL;
+    UT_Stub_LastPendedFunction(UT_Stub_LastPendedParameter, 0);
+    UtAssert_True(UT_Stub_LastDeletedHandle == UT_Stub_CurrentTaskHandle, "the timer task deletes the calling task");
 
     /* the calling task, no delete hook registered -> none called */
     OS_task_table[0].delete_hook_pointer = NULL;
@@ -321,11 +337,29 @@ void Test_OS_FreeRTOS_TaskCleanup(void)
 
 void Test_OS_TaskExit_Impl(void)
 {
-    UT_Stub_LastDeletedHandle = (TaskHandle_t)0x1;
+    /* the calling task is handed to the timer task and suspends until it has gone */
+    UT_Stub_LastDeletedHandle   = (TaskHandle_t)0x1;
+    UT_Stub_LastSuspendedHandle = (TaskHandle_t)0x1;
 
     OS_TaskExit_Impl();
 
-    UtAssert_True(UT_Stub_LastDeletedHandle == NULL, "vTaskDelete(NULL) called for calling task");
+    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
+    UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
+    UtAssert_STUB_COUNT(vTaskSuspend, 1);
+    UtAssert_NULL(UT_Stub_LastSuspendedHandle);
+
+    /* the timer task runs the handed function: the task is deleted from outside */
+    UT_Stub_LastDeletedHandle = NULL;
+    UT_Stub_LastPendedFunction(UT_Stub_LastPendedParameter, 0);
+    UtAssert_True(UT_Stub_LastDeletedHandle == UT_Stub_CurrentTaskHandle, "the timer task deletes the calling task");
+
+    /* the timer queue is full -> no suspend, the task deletes itself and the idle task frees it */
+    UT_SetDeferredRetcode(UT_KEY(xTimerPendFunctionCall), 1, -1);
+    UT_Stub_LastDeletedHandle = (TaskHandle_t)0x1;
+    OS_TaskExit_Impl();
+    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 2);
+    UtAssert_STUB_COUNT(vTaskSuspend, 1);
+    UtAssert_NULL(UT_Stub_LastDeletedHandle);
 }
 
 void Test_OS_TaskDelay_Impl(void)

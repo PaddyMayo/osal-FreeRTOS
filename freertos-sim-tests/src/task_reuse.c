@@ -3,20 +3,22 @@
  *
  * Purpose:
  *   Task slot and TCB reuse. A task that exits gives its OSAL table slot back
- *   at once, but FreeRTOS only frees its TCB later, when the idle task runs.
- *   OS_TaskCreate_Impl() waits for a TCB pool entry in that window, so this
- *   checks that creating tasks right after others have gone never fails and
- *   never hangs, however the old ones went:
+ *   at once, but the kernel frees its TCB later. The port has the timer task
+ *   do that for a task that exits (OS_FreeRTOS_DeleteSelf), because the idle
+ *   task, which the kernel leaves it to, can be kept off the CPU by a task that
+ *   never blocks. So this checks that creating tasks right after others have
+ *   gone never fails and never hangs, however the old ones went:
  *
  *     exit     the task returns through OS_TaskExit()
  *     self     the task deletes itself with OS_TaskDelete(), delete hook runs
  *     other    another task deletes it, the kernel frees the TCB at once
  *     full     every slot is taken, so a further create must fail cleanly
- *     starved  the idle task cannot run, so a create must give up, not hang
+ *     starved  the idle task never runs, and creates keep succeeding
  *
  *   The exiting tasks run above the startup task so they are gone before the
  *   next create, and the startup task never lets the idle task run in between:
- *   every create after the first finds the pool empty and has to wait.
+ *   if an exited task's TCB waited for idle, the pool would be empty after
+ *   OS_MAX_TASKS creates and the next one would time out.
  *
  *   A hang is not reported by the firmware, the harness times the run out.
  *   Otherwise the exit status is the number of the first check that failed,
@@ -145,8 +147,8 @@ static int32 Reuse_Create(osal_id_t *Id, uint32 Index, osal_task_entry Entry, os
  * last has gone. A new OSAL task waits for its creator to finish registering
  * it before it runs, so it takes a while to exit; creating faster than that
  * would just fill the table. Waiting for each one to go (without letting idle
- * run) leaves its slot free but its TCB with the kernel, so after
- * OS_MAX_TASKS rounds a create finds the pool empty and has to wait for idle.
+ * run) leaves its slot free, and its TCB must come back without idle's help,
+ * or after OS_MAX_TASKS rounds a create finds the pool empty and times out.
  */
 static void Reuse_Churn(osal_task_entry Entry, uint32 Rounds, int FirstCheck)
 {
@@ -181,44 +183,26 @@ static void Reuse_SpinnerTask(void *Parameter)
 }
 
 /*
- * The idle task is what frees an exited task's TCB, so a task that never blocks
- * and runs above it keeps the pool empty. A create must give up with
- * OS_ERR_TRY_AGAIN instead of waiting for ever, and work again once idle runs.
+ * A task that never blocks and runs above the idle task keeps it off the CPU,
+ * and the kernel leaves the freeing of a task that deleted itself to idle. The
+ * port has the timer task do it instead, so more tasks than the pool holds can
+ * come and go, back to back, without idle ever running, and every create works.
  */
 static void Reuse_StarvedIdle(void)
 {
-    osal_id_t    Id;
     TaskHandle_t Spinner = NULL;
-    TickType_t   Start;
-    TickType_t   Waited;
-    int32        Status;
 
-    /* Let idle free whatever the churn left, then take every entry with tasks that have exited */
-    (void)OS_TaskDelay(REUSE_WAIT_MS * 5U);
-    Reuse_Churn(Reuse_ExitTask, OS_MAX_TASKS, 50);
-
-    /* Above idle, below this task: it runs only while this task waits */
+    /* Above idle, below this task: it takes the CPU whenever this task sleeps, so idle never gets it */
     Reuse_Check(xTaskCreate(Reuse_SpinnerTask, "spin", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY + 1, &Spinner)
                     == pdPASS,
-                52);
+                50);
 
-    Start  = xTaskGetTickCount();
-    Status = Reuse_Create(&Id, OS_MAX_TASKS, Reuse_ExitTask, REUSE_FAST);
-    Waited = xTaskGetTickCount() - Start;
+    Reuse_Churn(Reuse_ExitTask, 2U * OS_MAX_TASKS, 51);
 
-    Reuse_Check(Status == OS_ERR_TRY_AGAIN, 53);
-    Reuse_Check(Waited < pdMS_TO_TICKS(REUSE_TIMEOUT_MS), 54);
-
-    /* Stop starving idle: the entries come back and a create works again */
     if (Spinner != NULL)
     {
         vTaskDelete(Spinner);
     }
-    (void)OS_TaskDelay(REUSE_WAIT_MS * 5U);
-
-    TasksFinished = 0;
-    Reuse_Check(Reuse_Create(&Id, OS_MAX_TASKS, Reuse_ExitTask, REUSE_FAST) == OS_SUCCESS, 55);
-    Reuse_Check(Reuse_WaitFor(&TasksFinished, 1), 56);
 }
 
 /* Fill every slot with a task that stays, see a further create refused, then delete them */

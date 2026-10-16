@@ -19,6 +19,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
+#include "timers.h"
 
 #define UT_STUB_TLS_SLOTS 4
 
@@ -27,9 +28,14 @@ TaskHandle_t UT_Stub_CurrentTaskHandle = (TaskHandle_t)0x1000;
 static void *UT_Stub_TLSArray[UT_STUB_TLS_SLOTS];
 
 TaskHandle_t UT_Stub_LastDeletedHandle;
+TaskHandle_t UT_Stub_LastSuspendedHandle;
 TaskHandle_t UT_Stub_LastPriorityHandle;
 UBaseType_t  UT_Stub_LastPriorityValue;
 TickType_t   UT_Stub_LastDelayTicks;
+
+/* The function handed to the timer task, and what it was given */
+PendedFunction_t UT_Stub_LastPendedFunction;
+void            *UT_Stub_LastPendedParameter;
 
 TaskFunction_t         UT_Stub_LastCreateTaskCode;
 void                  *UT_Stub_LastCreateParameters;
@@ -86,6 +92,36 @@ void vTaskDelete(TaskHandle_t xTaskToDelete)
     UT_Stub_LastDeletedHandle = xTaskToDelete;
 
     UT_DEFAULT_IMPL(vTaskDelete);
+}
+
+void vTaskSuspend(TaskHandle_t xTaskToSuspend)
+{
+    UT_Stub_LastSuspendedHandle = xTaskToSuspend;
+
+    UT_DEFAULT_IMPL(vTaskSuspend);
+}
+
+BaseType_t xTimerPendFunctionCall(PendedFunction_t xFunctionToPend,
+                                  void            *pvParameter1,
+                                  uint32_t         ulParameter2,
+                                  TickType_t       xTicksToWait)
+{
+    int32 status;
+
+    (void)ulParameter2;
+    (void)xTicksToWait;
+
+    UT_Stub_LastPendedFunction  = xFunctionToPend;
+    UT_Stub_LastPendedParameter = pvParameter1;
+
+    status = UT_DEFAULT_IMPL(xTimerPendFunctionCall);
+
+    if (status < 0)
+    {
+        return pdFALSE;
+    }
+
+    return pdTRUE;
 }
 
 void vTaskDelay(TickType_t xTicksToDelay)
