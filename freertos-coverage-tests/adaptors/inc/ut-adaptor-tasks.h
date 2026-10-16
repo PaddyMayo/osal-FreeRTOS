@@ -37,4 +37,7 @@ bool         UT_TaskTest_GetPoolInUse(uint32 pool_idx);
 void         UT_TaskTest_SetPoolInUse(uint32 pool_idx, bool in_use);
 void         UT_TaskTest_SetAllPoolInUse(void);
 
+/* How long OS_TaskCreate_Impl() waits for a pool entry, in ticks */
+TickType_t UT_TaskTest_GetTcbWaitTicks(void);
+
 #endif /* UT_ADAPTOR_TASKS_H */

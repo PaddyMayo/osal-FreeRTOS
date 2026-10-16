@@ -48,6 +48,11 @@ bool UT_TaskTest_GetPoolInUse(uint32 pool_idx)
     return OS_impl_task_tcb_pool[pool_idx].in_use;
 }
 
+TickType_t UT_TaskTest_GetTcbWaitTicks(void)
+{
+    return OS_FreeRTOS_MsToTicks(OS_FREERTOS_TCB_WAIT_MS);
+}
+
 void UT_TaskTest_SetPoolInUse(uint32 pool_idx, bool in_use)
 {
     OS_impl_task_tcb_pool[pool_idx].in_use = in_use;

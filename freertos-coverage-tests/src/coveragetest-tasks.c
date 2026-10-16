@@ -121,7 +121,8 @@ void Test_OS_TaskCreate_Impl(void)
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreTake, 1);
-    UtAssert_True(UT_Stub_LastTakeTicks == portMAX_DELAY, "waits for a free pool entry for as long as it takes");
+    UtAssert_True(UT_Stub_LastTakeTicks == UT_TaskTest_GetTcbWaitTicks(),
+                  "waits for a free pool entry, but only for a bounded time");
     UtAssert_True(UT_TaskTest_GetPoolInUse(0), "first pool entry claimed");
     UtAssert_StrCmp(UT_Stub_LastCreateName, "UnitTest", "task name passed through");
     UtAssert_UINT32_EQ(UT_Stub_LastCreateStackDepth, 128);
@@ -190,6 +191,13 @@ void Test_OS_TaskCreate_Impl(void)
      * and the count is given back */
     UT_TaskTest_SetAllPoolInUse();
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERROR);
+    UtAssert_STUB_COUNT(xTaskCreateStatic, 5);
+    UtAssert_STUB_COUNT(xSemaphoreGive, 7);
+
+    /* no entry comes free in time (the idle task is kept off the CPU) -> OS_ERR_TRY_AGAIN, nothing
+     * claimed, created or given back */
+    UT_SetDeferredRetcode(UT_KEY(xSemaphoreTake), 1, -1);
+    UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_ERR_TRY_AGAIN);
     UtAssert_STUB_COUNT(xTaskCreateStatic, 5);
     UtAssert_STUB_COUNT(xSemaphoreGive, 7);
 }

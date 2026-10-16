@@ -137,10 +137,17 @@ xSemaphoreCreateCountingStatic(UBaseType_t uxMaxCount, UBaseType_t uxInitialCoun
 
 BaseType_t xSemaphoreTake(SemaphoreHandle_t xSemaphore, TickType_t xBlockTime)
 {
+    int32 status;
+
     UT_Stub_LastTakeSem   = xSemaphore;
     UT_Stub_LastTakeTicks = xBlockTime;
 
-    UT_DEFAULT_IMPL(xSemaphoreTake);
+    status = UT_DEFAULT_IMPL(xSemaphoreTake);
+
+    if (status < 0)
+    {
+        return pdFALSE;
+    }
 
     return pdTRUE;
 }
