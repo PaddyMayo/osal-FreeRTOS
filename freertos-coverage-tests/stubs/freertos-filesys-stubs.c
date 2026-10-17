@@ -19,9 +19,14 @@
 
 #include "lfs.h"
 
+#include "generic_freertos_bsp_internal.h"
+
 /* The storage configuration the module under test uses; a test may change it */
-struct lfs_config              UT_Stub_StorageConfig;
-const struct lfs_config *const OS_BSP_StorageConfig = &UT_Stub_StorageConfig;
+struct lfs_config UT_Stub_StorageConfig;
+
+OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal = {
+    .StorageConfig = &UT_Stub_StorageConfig,
+};
 
 /* What lfs_fs_stat() and lfs_fs_size() report */
 lfs_size_t  UT_Stub_FsBlockSize;

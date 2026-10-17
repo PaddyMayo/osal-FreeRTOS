@@ -110,7 +110,8 @@ void Test_OS_FileSysFormatVolume_Impl(void)
     UtAssert_INT32_EQ(OS_FileSysFormatVolume_Impl(&token), OS_SUCCESS);
     UtAssert_STUB_COUNT(lfs_format, 1);
     UtAssert_True(UT_Stub_LastLfs == &OS_FreeRTOS_Lfs, "lfs_format() called with the volume");
-    UtAssert_True(UT_Stub_LastConfig == OS_BSP_StorageConfig, "lfs_format() called with the storage configuration");
+    UtAssert_True(UT_Stub_LastConfig == OS_BSP_GenericFreeRTOSGlobal.StorageConfig,
+                  "lfs_format() called with the storage configuration");
     UtAssert_STUB_COUNT(xSemaphoreTake, 1);
     UtAssert_STUB_COUNT(xSemaphoreGive, 1);
 
@@ -139,7 +140,8 @@ void Test_OS_FileSysMountVolume_Impl(void)
     UtAssert_INT32_EQ(OS_FileSysMountVolume_Impl(&token), OS_SUCCESS);
     UtAssert_STUB_COUNT(lfs_mount, 2);
     UtAssert_True(UT_Stub_LastLfs == &OS_FreeRTOS_Lfs, "lfs_mount() called with the volume");
-    UtAssert_True(UT_Stub_LastConfig == OS_BSP_StorageConfig, "lfs_mount() called with the storage configuration");
+    UtAssert_True(UT_Stub_LastConfig == OS_BSP_GenericFreeRTOSGlobal.StorageConfig,
+                  "lfs_mount() called with the storage configuration");
 
     /* mounted already -> refused, there is one lfs_t */
     UtAssert_INT32_EQ(OS_FileSysMountVolume_Impl(&token), OS_FS_ERR_DEVICE_NOT_FREE);

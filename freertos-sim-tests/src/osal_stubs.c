@@ -4,7 +4,7 @@
  * Purpose:
  *   What the OSAL API needs to link that the port does not implement yet, so a
  *   sim test can call it. It is test scaffolding and not part of the product:
- *   the port only has common, queue and tasks so far.
+ *   the port only has common, queue, tasks, files and filesys so far.
  *
  *   The global lock is real, a recursive mutex per object type, because OSAL
  *   takes it on every create and delete and the tasks under test run
@@ -287,133 +287,6 @@ int32 OS_DirRemove_Impl(const char *local_path)
 int32 OS_DirRewind_Impl(const OS_object_token_t *token)
 {
     (void)token;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileAllocate_Impl(const OS_object_token_t *token, osal_offset_t offset, osal_offset_t len)
-{
-    (void)token;
-    (void)offset;
-    (void)len;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileChmod_Impl(const char *local_path, uint32 access_mode)
-{
-    (void)local_path;
-    (void)access_mode;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileOpen_Impl(const OS_object_token_t *token, const char *local_path, int32 flags, int32 access_mode)
-{
-    (void)token;
-    (void)local_path;
-    (void)flags;
-    (void)access_mode;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileRemove_Impl(const char *local_path)
-{
-    (void)local_path;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileRename_Impl(const char *old_path, const char *new_path)
-{
-    (void)old_path;
-    (void)new_path;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileStat_Impl(const char *local_path, os_fstat_t *filestat)
-{
-    (void)local_path;
-    (void)filestat;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileSysCheckVolume_Impl(const OS_object_token_t *token, bool repair)
-{
-    (void)token;
-    (void)repair;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileSysFormatVolume_Impl(const OS_object_token_t *token)
-{
-    (void)token;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileSysMountVolume_Impl(const OS_object_token_t *token)
-{
-    (void)token;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileSysStartVolume_Impl(const OS_object_token_t *token)
-{
-    (void)token;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileSysStatVolume_Impl(const OS_object_token_t *token, OS_statvfs_t *result)
-{
-    (void)token;
-    (void)result;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileSysStopVolume_Impl(const OS_object_token_t *token)
-{
-    (void)token;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileSysUnmountVolume_Impl(const OS_object_token_t *token)
-{
-    (void)token;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_FileTruncate_Impl(const OS_object_token_t *token, osal_offset_t len)
-{
-    (void)token;
-    (void)len;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_GenericClose_Impl(const OS_object_token_t *token)
-{
-    (void)token;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_GenericRead_Impl(const OS_object_token_t *token, void *buffer, size_t nbytes, OS_time_t abs_timeout)
-{
-    (void)token;
-    (void)buffer;
-    (void)nbytes;
-    (void)abs_timeout;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_GenericSeek_Impl(const OS_object_token_t *token, osal_offset_t offset, uint32 whence)
-{
-    (void)token;
-    (void)offset;
-    (void)whence;
-    return OS_ERR_NOT_IMPLEMENTED;
-}
-
-int32 OS_GenericWrite_Impl(const OS_object_token_t *token, const void *buffer, size_t nbytes, OS_time_t abs_timeout)
-{
-    (void)token;
-    (void)buffer;
-    (void)nbytes;
-    (void)abs_timeout;
     return OS_ERR_NOT_IMPLEMENTED;
 }
 

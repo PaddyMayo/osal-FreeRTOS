@@ -13,14 +13,6 @@ enable_testing()
 add_subdirectory(third_party/osal osal_build)
 add_subdirectory(third_party/FreeRTOS-Kernel freertos_kernel)
 
-# The storage source the littlefs volume uses. It defines OS_BSP_StorageConfig
-# (see generic-freertos/src/bsp_start.c) and is chosen at configure time, e.g.
-# -DOSAL_FREERTOS_STORAGE_TARGET=<target>. Empty means no storage source.
-set(OSAL_FREERTOS_STORAGE_TARGET "" CACHE STRING "")
-if (OSAL_FREERTOS_STORAGE_TARGET)
-    target_link_libraries(osal PUBLIC ${OSAL_FREERTOS_STORAGE_TARGET})
-endif ()
-
 # osal_bsp only picks up the BSP's compiled objects via $<TARGET_OBJECTS:...>,
 # which does not inherit that target's own link to freertos_kernel - so it is
 # linked here, otherwise anything linking osal_bsp fails with undefined

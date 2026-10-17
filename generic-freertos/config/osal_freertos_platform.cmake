@@ -27,7 +27,7 @@
 #   set(OSAL_FREERTOS_CPU_CLOCK_HZ                   <hz>            CACHE STRING "" FORCE)  # only with CORE_CLOCK
 #   set(OSAL_FREERTOS_KERNEL_INTERRUPT_PRIORITY      <c-expr>        CACHE STRING "" FORCE)  # only with INTERRUPT_PRIORITIES
 #   set(OSAL_FREERTOS_MAX_SYSCALL_INTERRUPT_PRIORITY <c-expr>        CACHE STRING "" FORCE)  # only with INTERRUPT_PRIORITIES
-#   set(OSAL_FREERTOS_SOURCES                        <path>[;<path>] CACHE STRING "" FORCE)  # startup code, vector table
+#   set(OSAL_FREERTOS_SOURCES                        <path>[;<path>] CACHE STRING "" FORCE)  # startup code, vector table, and bsp_storage.c with bsp_storage.h next to it
 #   set(OSAL_FREERTOS_LINKER_SCRIPT                  <path>          CACHE STRING "" FORCE)  # absolute path
 #
 ##########################################################################
@@ -63,7 +63,7 @@ function(osal_freertos_platform)
     get_cmake_property(cache_variables CACHE_VARIABLES)
     foreach (variable IN LISTS cache_variables)
         string(REGEX REPLACE "^OSAL_FREERTOS_" "" key "${variable}")
-        if (key STREQUAL variable OR key IN_LIST keys OR key STREQUAL "STORAGE_TARGET")
+        if (key STREQUAL variable OR key IN_LIST keys)
             continue()
         endif ()
         message(FATAL_ERROR "${variable} is not a key of PORT=${PORT}, which takes: ${keys} - see ${config_doc}")
