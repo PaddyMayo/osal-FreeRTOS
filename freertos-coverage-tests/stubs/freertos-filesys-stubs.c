@@ -10,6 +10,8 @@
  *   worth asserting on are captured into the extern globals below.
  */
 
+#include <string.h>
+
 #include "utstubs.h"
 
 #include "FreeRTOS.h"
@@ -33,9 +35,13 @@ lfs_size_t  UT_Stub_FsBlockSize;
 lfs_size_t  UT_Stub_FsBlockCount;
 lfs_ssize_t UT_Stub_FsBlocksUsed;
 
+/* What lfs_stat() reports */
+struct lfs_info UT_Stub_StatInfo;
+
 /* Captured arguments */
 lfs_t                   *UT_Stub_LastLfs;
 const struct lfs_config *UT_Stub_LastConfig;
+const char              *UT_Stub_LastPath;
 
 StaticSemaphore_t *UT_Stub_LastCreateMutexBuffer;
 SemaphoreHandle_t  UT_Stub_LastTakeSem;
@@ -93,11 +99,29 @@ int lfs_mount(lfs_t *lfs, const struct lfs_config *config)
     return UT_DEFAULT_IMPL(lfs_mount);
 }
 
-int lfs_unmount(lfs_t *lfs)
+int lfs_stat(lfs_t *lfs, const char *path, struct lfs_info *info)
 {
-    UT_Stub_LastLfs = lfs;
+    int status;
 
-    return UT_DEFAULT_IMPL(lfs_unmount);
+    UT_Stub_LastLfs  = lfs;
+    UT_Stub_LastPath = path;
+
+    status = UT_DEFAULT_IMPL(lfs_stat);
+
+    if (status >= 0)
+    {
+        memcpy(info, &UT_Stub_StatInfo, sizeof(*info));
+    }
+
+    return status;
+}
+
+int lfs_mkdir(lfs_t *lfs, const char *path)
+{
+    UT_Stub_LastLfs  = lfs;
+    UT_Stub_LastPath = path;
+
+    return UT_DEFAULT_IMPL(lfs_mkdir);
 }
 
 int lfs_fs_mkconsistent(lfs_t *lfs)
