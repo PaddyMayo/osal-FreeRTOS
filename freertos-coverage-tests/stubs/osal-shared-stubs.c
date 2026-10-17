@@ -11,6 +11,7 @@
  */
 
 #include "os-shared-common.h"
+#include "os-shared-filesys.h"
 #include "os-shared-idmap.h"
 #include "os-shared-task.h"
 
@@ -22,6 +23,12 @@ OS_SharedGlobalVars_t OS_SharedGlobalVars;
  * link (it exercises os-impl-tasks.c in isolation).
  */
 OS_task_internal_record_t OS_task_table[OS_MAX_TASKS];
+
+/*
+ * Likewise for osapi-filesys.c, for os-impl-filesys.c, which reads and sets
+ * the system mount point of the volume record.
+ */
+OS_filesys_internal_record_t OS_filesys_table[OS_MAX_FILE_SYSTEMS];
 
 /*
  * Normally reached from a running FreeRTOS scheduler calling into
