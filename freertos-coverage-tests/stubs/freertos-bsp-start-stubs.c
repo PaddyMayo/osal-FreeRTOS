@@ -31,6 +31,8 @@
 
 #include "osapi-common.h"
 
+#include "lfs.h"
+
 /* Captured xTaskCreate arguments */
 TaskFunction_t         UT_Stub_StartupTask;
 const char            *UT_Stub_LastCreateName;
@@ -157,6 +159,116 @@ void OS_BSP_ConsoleOutput_Impl(const char *Str, size_t DataLen)
 
     memcpy(&UT_Stub_Console[UT_Stub_ConsoleLen], Str, DataLen);
     UT_Stub_ConsoleLen += DataLen;
+}
+
+/*
+ * The vendor's storage functions, which main() fills the littlefs configuration
+ * from. The callbacks are never called here, so they only return success; the
+ * getters return known values for the test to look for.
+ */
+static uint8_t UT_Stub_StorageReadCache[128];
+static uint8_t UT_Stub_StorageProgCache[128];
+static uint8_t UT_Stub_StorageLookaheadWindow[16];
+
+/* What the getters return; a test breaks one rule at a time by changing them, see UT_Stub_StorageReset() */
+lfs_size_t UT_Stub_StorageReadSize;
+lfs_size_t UT_Stub_StorageProgSize;
+lfs_size_t UT_Stub_StorageBlockSize;
+lfs_size_t UT_Stub_StorageBlockCount;
+lfs_size_t UT_Stub_StorageCacheSize;
+lfs_size_t UT_Stub_StorageLookaheadSize;
+void      *UT_Stub_StorageReadBuffer;
+void      *UT_Stub_StorageProgBuffer;
+void      *UT_Stub_StorageLookaheadBuffer;
+
+/* A geometry that follows every littlefs rule */
+void UT_Stub_StorageReset(void)
+{
+    UT_Stub_StorageReadSize        = 16;
+    UT_Stub_StorageProgSize        = 16;
+    UT_Stub_StorageBlockSize       = 256;
+    UT_Stub_StorageBlockCount      = 12;
+    UT_Stub_StorageCacheSize       = 128;
+    UT_Stub_StorageLookaheadSize   = 16;
+    UT_Stub_StorageReadBuffer      = UT_Stub_StorageReadCache;
+    UT_Stub_StorageProgBuffer      = UT_Stub_StorageProgCache;
+    UT_Stub_StorageLookaheadBuffer = UT_Stub_StorageLookaheadWindow;
+}
+
+// buffer must stay non-const to match the vendor's read function
+// cppcheck-suppress constParameterPointer
+int OS_BSP_Storage_Read(const struct lfs_config *c, lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t size)
+{
+    return 0;
+}
+
+int OS_BSP_Storage_Prog(const struct lfs_config *c,
+                        lfs_block_t              block,
+                        lfs_off_t                off,
+                        const void              *buffer,
+                        lfs_size_t               size)
+{
+    return 0;
+}
+
+int OS_BSP_Storage_Erase(const struct lfs_config *c, lfs_block_t block)
+{
+    return 0;
+}
+
+int OS_BSP_Storage_Sync(const struct lfs_config *c)
+{
+    return 0;
+}
+
+lfs_size_t OS_BSP_Storage_ReadSize(void)
+{
+    return UT_Stub_StorageReadSize;
+}
+
+lfs_size_t OS_BSP_Storage_ProgSize(void)
+{
+    return UT_Stub_StorageProgSize;
+}
+
+lfs_size_t OS_BSP_Storage_BlockSize(void)
+{
+    return UT_Stub_StorageBlockSize;
+}
+
+lfs_size_t OS_BSP_Storage_BlockCount(void)
+{
+    return UT_Stub_StorageBlockCount;
+}
+
+int32_t OS_BSP_Storage_BlockCycles(void)
+{
+    return -1;
+}
+
+lfs_size_t OS_BSP_Storage_CacheSize(void)
+{
+    return UT_Stub_StorageCacheSize;
+}
+
+lfs_size_t OS_BSP_Storage_LookaheadSize(void)
+{
+    return UT_Stub_StorageLookaheadSize;
+}
+
+void *OS_BSP_Storage_ReadBuffer(void)
+{
+    return UT_Stub_StorageReadBuffer;
+}
+
+void *OS_BSP_Storage_ProgBuffer(void)
+{
+    return UT_Stub_StorageProgBuffer;
+}
+
+void *OS_BSP_Storage_LookaheadBuffer(void)
+{
+    return UT_Stub_StorageLookaheadBuffer;
 }
 
 void OS_Application_Startup(void)

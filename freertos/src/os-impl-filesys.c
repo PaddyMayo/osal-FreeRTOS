@@ -4,10 +4,10 @@
  * Purpose: OSAL file system implementation on top of littlefs.
  *
  *          The port has one volume, the BSP's storage device
- *          (OS_BSP_StorageConfig), so only one OSAL file system can be
- *          mounted at a time. Every call into littlefs goes through the lock
- *          in this file, because the library is not thread safe and the
- *          storage configuration is const, so it cannot supply its own.
+ *          (OS_BSP_GenericFreeRTOSGlobal.StorageConfig), so only one OSAL file
+ *          system can be mounted at a time. Every call into littlefs goes
+ *          through the lock in this file, because the library is not thread
+ *          safe and the storage configuration has no lock of its own.
  */
 
 #include "FreeRTOS.h"
@@ -77,7 +77,7 @@ void OS_FreeRTOS_LfsUnlock(void)
  *-----------------------------------------------------------------*/
 int32 OS_FileSysStartVolume_Impl(const OS_object_token_t *token)
 {
-    if (OS_BSP_StorageConfig->cache_size > OS_FREERTOS_LFS_FILE_CACHE_SIZE)
+    if (OS_BSP_GenericFreeRTOSGlobal.StorageConfig->cache_size > OS_FREERTOS_LFS_FILE_CACHE_SIZE)
     {
         return OS_FS_ERR_DRIVE_NOT_CREATED;
     }
@@ -116,7 +116,7 @@ int32 OS_FileSysFormatVolume_Impl(const OS_object_token_t *token)
     }
 
     OS_FreeRTOS_LfsLock();
-    err = lfs_format(&OS_FreeRTOS_Lfs, OS_BSP_StorageConfig);
+    err = lfs_format(&OS_FreeRTOS_Lfs, OS_BSP_GenericFreeRTOSGlobal.StorageConfig);
     OS_FreeRTOS_LfsUnlock();
 
     return (err < 0) ? OS_ERROR : OS_SUCCESS;
@@ -140,7 +140,7 @@ int32 OS_FileSysMountVolume_Impl(const OS_object_token_t *token)
     }
 
     OS_FreeRTOS_LfsLock();
-    err = lfs_mount(&OS_FreeRTOS_Lfs, OS_BSP_StorageConfig);
+    err = lfs_mount(&OS_FreeRTOS_Lfs, OS_BSP_GenericFreeRTOSGlobal.StorageConfig);
     OS_FreeRTOS_LfsUnlock();
 
     if (err < 0)

@@ -15,6 +15,9 @@
 
 #include "lfs.h"
 
+/* The BSP's storage configuration, OS_BSP_GenericFreeRTOSGlobal.StorageConfig */
+#include "generic_freertos_bsp_internal.h"
+
 /*
  * Cache each open file reserves. The cache_size of the BSP's storage
  * configuration must not exceed it, see OS_FileSysStartVolume_Impl().
@@ -22,13 +25,6 @@
 #ifndef OS_FREERTOS_LFS_FILE_CACHE_SIZE
 #define OS_FREERTOS_LFS_FILE_CACHE_SIZE 128
 #endif
-
-/*
- * The littlefs configuration of the BSP's storage device, defined by the
- * storage source selected at build time (OSAL_FREERTOS_STORAGE_TARGET). It is
- * valid for the life of the program and must not be modified.
- */
-extern const struct lfs_config *const OS_BSP_StorageConfig;
 
 /* The one volume, mounted and unmounted by the filesys implementation */
 extern lfs_t OS_FreeRTOS_Lfs;

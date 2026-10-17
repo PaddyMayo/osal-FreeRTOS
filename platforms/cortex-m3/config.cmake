@@ -29,5 +29,5 @@ set(OSAL_FREERTOS_MAX_SYSCALL_INTERRUPT_PRIORITY 192 CACHE STRING "" FORCE)
 
 # Vector table and reset handler shared by the Cortex-M platforms, and this
 # board's memory map, see link.ld
-set(OSAL_FREERTOS_SOURCES       "${CMAKE_CURRENT_LIST_DIR}/../common/cortex_m_startup.c" CACHE STRING "" FORCE)
+set(OSAL_FREERTOS_SOURCES       "${CMAKE_CURRENT_LIST_DIR}/../common/cortex_m_startup.c;${CMAKE_CURRENT_LIST_DIR}/../common/storage-ram/bsp_storage.c" CACHE STRING "" FORCE)
 set(OSAL_FREERTOS_LINKER_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/link.ld" CACHE STRING "" FORCE)

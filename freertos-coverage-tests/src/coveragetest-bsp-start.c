@@ -70,6 +70,18 @@ extern bool                   UT_Stub_PauseReturnsOnce;
 extern char                   UT_Stub_Console[];
 extern size_t                 UT_Stub_ConsoleLen;
 
+/* What the stubbed storage functions report, declared in freertos-bsp-start-stubs.c */
+extern lfs_size_t UT_Stub_StorageReadSize;
+extern lfs_size_t UT_Stub_StorageProgSize;
+extern lfs_size_t UT_Stub_StorageBlockSize;
+extern lfs_size_t UT_Stub_StorageBlockCount;
+extern lfs_size_t UT_Stub_StorageCacheSize;
+extern lfs_size_t UT_Stub_StorageLookaheadSize;
+extern void      *UT_Stub_StorageReadBuffer;
+extern void      *UT_Stub_StorageProgBuffer;
+extern void      *UT_Stub_StorageLookaheadBuffer;
+void              UT_Stub_StorageReset(void);
+
 /* The status the application sets from inside OS_Application_Run() */
 static int32 AppExitCode;
 
@@ -318,6 +330,99 @@ void Test_Lock_Unlock(void)
                   "unlock gives the console mutex");
 }
 
+void Test_Main_StorageConfig(void)
+{
+    const struct lfs_config *Config;
+
+    UT_Main(0, NULL);
+
+    Config = OS_BSP_GenericFreeRTOSGlobal.StorageConfig;
+    UtAssert_True(Config != NULL, "main sets up the storage configuration");
+
+    UtAssert_True(Config->read == OS_BSP_Storage_Read, "read callback");
+    UtAssert_True(Config->prog == OS_BSP_Storage_Prog, "prog callback");
+    UtAssert_True(Config->erase == OS_BSP_Storage_Erase, "erase callback");
+    UtAssert_True(Config->sync == OS_BSP_Storage_Sync, "sync callback");
+
+    UtAssert_UINT32_EQ(Config->read_size, OS_BSP_Storage_ReadSize());
+    UtAssert_UINT32_EQ(Config->prog_size, OS_BSP_Storage_ProgSize());
+    UtAssert_UINT32_EQ(Config->block_size, OS_BSP_Storage_BlockSize());
+    UtAssert_UINT32_EQ(Config->block_count, OS_BSP_Storage_BlockCount());
+    UtAssert_INT32_EQ(Config->block_cycles, OS_BSP_Storage_BlockCycles());
+    UtAssert_UINT32_EQ(Config->cache_size, OS_BSP_Storage_CacheSize());
+    UtAssert_UINT32_EQ(Config->lookahead_size, OS_BSP_Storage_LookaheadSize());
+
+    UtAssert_True(Config->read_buffer == OS_BSP_Storage_ReadBuffer(), "read buffer");
+    UtAssert_True(Config->prog_buffer == OS_BSP_Storage_ProgBuffer(), "prog buffer");
+    UtAssert_True(Config->lookahead_buffer == OS_BSP_Storage_LookaheadBuffer(), "lookahead buffer");
+}
+
+/*
+ * Each case breaks the first littlefs rule that main() checks for it, with every
+ * rule before it kept: the default geometry is 16/16/256/12/128/16 (see
+ * UT_Stub_StorageReset)
+ */
+void Test_Main_StorageConfigInvalid(void)
+{
+    static const struct
+    {
+        lfs_size_t  ReadSize;
+        lfs_size_t  ProgSize;
+        lfs_size_t  BlockSize;
+        lfs_size_t  BlockCount;
+        lfs_size_t  CacheSize;
+        lfs_size_t  LookaheadSize;
+        const char *Broken;
+    } Cases[] = {
+        { 0,  16, 256, 12, 128, 16, "read size is zero"                             },
+        { 16, 0,  256, 12, 128, 16, "prog size is zero"                             },
+        { 16, 16, 0,   12, 128, 16, "block size is zero"                            },
+        { 16, 16, 256, 0,  128, 16, "block count is zero"                           },
+        { 16, 16, 256, 12, 0,   16, "cache size is zero"                            },
+        { 16, 16, 256, 12, 128, 0,  "lookahead size is zero"                        },
+        { 3,  16, 256, 12, 128, 16, "block size is not a multiple of the read size" },
+        { 16, 3,  256, 12, 128, 16, "block size is not a multiple of the prog size" },
+        { 32, 16, 96,  12, 48,  16, "cache size is not a multiple of the read size" },
+        { 16, 32, 96,  12, 48,  16, "cache size is not a multiple of the prog size" },
+        { 16, 16, 96,  12, 64,  16, "cache size does not divide the block size"     },
+        { 16, 16, 256, 12, 128, 12, "lookahead size is not a multiple of 8"         },
+    };
+    size_t Index;
+
+    for (Index = 0; Index < sizeof(Cases) / sizeof(Cases[0]); Index++)
+    {
+        UT_Stub_StorageReset();
+        UT_Stub_StorageReadSize      = Cases[Index].ReadSize;
+        UT_Stub_StorageProgSize      = Cases[Index].ProgSize;
+        UT_Stub_StorageBlockSize     = Cases[Index].BlockSize;
+        UT_Stub_StorageBlockCount    = Cases[Index].BlockCount;
+        UT_Stub_StorageCacheSize     = Cases[Index].CacheSize;
+        UT_Stub_StorageLookaheadSize = Cases[Index].LookaheadSize;
+
+        UtAssert_True(UT_Main(0, NULL) == EXIT_FAILURE, "main fails when the %s", Cases[Index].Broken);
+        AssertConsole("STORAGE CONFIG INVALID\n");
+    }
+
+    /* A buffer the vendor did not supply */
+    UT_Stub_StorageReset();
+    UT_Stub_StorageReadBuffer = NULL;
+    UtAssert_INT32_EQ(UT_Main(0, NULL), EXIT_FAILURE);
+    AssertConsole("STORAGE CONFIG INVALID\n");
+
+    UT_Stub_StorageReset();
+    UT_Stub_StorageProgBuffer = NULL;
+    UtAssert_INT32_EQ(UT_Main(0, NULL), EXIT_FAILURE);
+    AssertConsole("STORAGE CONFIG INVALID\n");
+
+    UT_Stub_StorageReset();
+    UT_Stub_StorageLookaheadBuffer = NULL;
+    UtAssert_INT32_EQ(UT_Main(0, NULL), EXIT_FAILURE);
+    AssertConsole("STORAGE CONFIG INVALID\n");
+
+    /* Failing before the task is created means the scheduler never starts */
+    UtAssert_STUB_COUNT(vTaskStartScheduler, 0);
+}
+
 void Test_StaticAllocationHooks(void)
 {
     StaticTask_t          *IdleTcb;
@@ -343,6 +448,7 @@ void Test_StaticAllocationHooks(void)
 void Osapi_Test_Setup(void)
 {
     UT_ResetState(0);
+    UT_Stub_StorageReset();
     memset(&OS_BSP_Global, 0, sizeof(OS_BSP_Global));
     UT_Stub_StartupTask                  = NULL;
     UT_Stub_LastCreateName               = NULL;
@@ -372,6 +478,8 @@ void UtTest_Setup(void)
     ADD_TEST(Main_AppExitStatus);
     ADD_TEST(Main_SchedulerFailsToStart);
     ADD_TEST(Main_TaskCreateFails);
+    ADD_TEST(Main_StorageConfig);
+    ADD_TEST(Main_StorageConfigInvalid);
     ADD_TEST(StackOverflowHook);
     ADD_TEST(AssertFailed);
     ADD_TEST(HaltKeepsSleeping);

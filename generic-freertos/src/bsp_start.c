@@ -10,6 +10,7 @@
  *   legitimately differ per host.
  */
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -22,19 +23,7 @@
 #include "bsp-impl.h"
 
 #include "generic_freertos_bsp_internal.h"
-
-/*----------------------------------------------------------------
-   OS_BSP_StorageConfig
-
-   Pointer to the littlefs configuration for the BSP's storage device. The
-   storage source selected at build time (OSAL_FREERTOS_STORAGE_TARGET)
-   defines it, so the BSP does not know what the device looks like. The
-   pointer is valid for the life of the program and must not be modified.
-
-   The cache_size must not exceed OS_FREERTOS_LFS_FILE_CACHE_SIZE (see
-   freertos/inc/os-impl-filesys.h), which is what each open file reserves.
- ------------------------------------------------------------------*/
-extern const struct lfs_config *const OS_BSP_StorageConfig;
+#include "bsp_storage.h"
 
 OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 
@@ -397,6 +386,24 @@ static void OS_BSP_StartupTask(void *pvParameters)
     OS_BSP_Shutdown_Impl();
 }
 
+/*----------------------------------------------------------------
+   OS_BSP_StorageIsValid
+
+   Checks the storage configuration against the rules littlefs asserts when it
+   mounts, so a bad geometry fails startup with a message instead of an assert
+   in the middle of a mount. Every size is checked for zero before it is
+   divided by.
+ ------------------------------------------------------------------*/
+static bool OS_BSP_StorageIsValid(const struct lfs_config *Config)
+{
+    return Config->read_size != 0 && Config->prog_size != 0 && Config->block_size != 0 && Config->block_count != 0
+           && Config->cache_size != 0 && Config->lookahead_size != 0 && Config->block_size % Config->read_size == 0
+           && Config->block_size % Config->prog_size == 0 && Config->cache_size % Config->read_size == 0
+           && Config->cache_size % Config->prog_size == 0 && Config->block_size % Config->cache_size == 0
+           && Config->lookahead_size % 8 == 0 && Config->read_buffer != NULL && Config->prog_buffer != NULL
+           && Config->lookahead_buffer != NULL;
+}
+
 /******************************************************************************
 **
 **  Purpose:
@@ -414,7 +421,40 @@ int main(int argc, char *argv[])
      * Initially clear the global objects
      */
     memset(&OS_BSP_Global, 0, sizeof(OS_BSP_Global));
-    memset(&OS_BSP_GenericFreeRTOSGlobal, 0, sizeof(OS_BSP_GenericFreeRTOSGlobal));
+    /* Every member before StorageConfig, the last one, which is set up below */
+    memset(&OS_BSP_GenericFreeRTOSGlobal, 0, offsetof(OS_BSP_GenericFreeRTOSGlobalData_t, StorageConfig));
+
+    /*
+     * The littlefs configuration. Static, since littlefs keeps a pointer to it
+     * for as long as the volume is mounted, and main()'s stack is reused by
+     * interrupts once the scheduler starts.
+     */
+    static struct lfs_config StorageConfig;
+
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig = &StorageConfig;
+
+    /* Fill every member of the littlefs configuration from the vendor's storage functions */
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read             = OS_BSP_Storage_Read;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog             = OS_BSP_Storage_Prog;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->erase            = OS_BSP_Storage_Erase;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->sync             = OS_BSP_Storage_Sync;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read_size        = OS_BSP_Storage_ReadSize();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog_size        = OS_BSP_Storage_ProgSize();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_size       = OS_BSP_Storage_BlockSize();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_count      = OS_BSP_Storage_BlockCount();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_cycles     = OS_BSP_Storage_BlockCycles();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->cache_size       = OS_BSP_Storage_CacheSize();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->lookahead_size   = OS_BSP_Storage_LookaheadSize();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read_buffer      = OS_BSP_Storage_ReadBuffer();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog_buffer      = OS_BSP_Storage_ProgBuffer();
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->lookahead_buffer = OS_BSP_Storage_LookaheadBuffer();
+
+    if (!OS_BSP_StorageIsValid(OS_BSP_GenericFreeRTOSGlobal.StorageConfig))
+    {
+        /* littlefs would assert on this configuration when the file system is mounted */
+        OS_BSP_ReportString("STORAGE CONFIG INVALID\n");
+        return EXIT_FAILURE;
+    }
 
     /*
      * Save the argc/argv arguments for future use.

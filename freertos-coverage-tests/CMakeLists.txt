@@ -33,7 +33,9 @@ set(FREERTOS_COVERAGE_INCLUDES
     fake-inc
     adaptors/inc
     ${CMAKE_SOURCE_DIR}/freertos/inc
+    ${CMAKE_SOURCE_DIR}/generic-freertos/src
     ${CMAKE_SOURCE_DIR}/third_party/littlefs
+    ${CMAKE_SOURCE_DIR}/third_party/osal/src/bsp/shared/inc
     ${OSAL_REAL_SOURCE_DIR}/src/os/inc
     ${OSAL_REAL_SOURCE_DIR}/src/os/shared/inc
     ${CMAKE_BINARY_DIR}/osal_build/inc
@@ -185,6 +187,7 @@ function(freertos_add_bsp_coverage_test BSP_NAME VARIANT)
     target_include_directories(${BSP_TESTRUNNER_TARGET} PRIVATE
         ${FREERTOS_COVERAGE_INCLUDES}
         ${CMAKE_SOURCE_DIR}/generic-freertos/src
+        ${CMAKE_SOURCE_DIR}/platforms/common/storage-ram
         ${OSAL_REAL_SOURCE_DIR}/src/bsp/shared/inc
     )
     target_compile_definitions(${BSP_TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_" ${ARGN})
