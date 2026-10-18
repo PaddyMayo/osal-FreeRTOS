@@ -139,8 +139,7 @@ endforeach()
 # The BSP's files (generic-freertos/src/bsp_<name>.c) are not os-impl modules,
 # so they sit outside FREERTOS_MODULE_LIST and follow the same pattern from
 # their own list: each entry needs src/coveragetest-bsp-<name>.c, and may add
-# stubs/freertos-bsp-<name>-stubs.c. bsp_console.c is not listed: it only holds
-# the console templates for now.
+# stubs/freertos-bsp-<name>-stubs.c.
 #
 # The real file is compiled against the same fake FreeRTOS headers, with the
 # common sources that do not need the OSAL shared layer, plus OSAL's own
@@ -148,6 +147,7 @@ endforeach()
 # main() is built as OS_BSP_TestMain, so it does not collide with src/main.c.
 set(FREERTOS_BSP_FILE_LIST
     start
+    console
 )
 
 set(BSP_COMMON_SOURCES ${FREERTOS_COVERAGE_COMMON_SOURCES})
@@ -188,6 +188,7 @@ function(freertos_add_bsp_coverage_test BSP_NAME VARIANT)
         ${FREERTOS_COVERAGE_INCLUDES}
         ${CMAKE_SOURCE_DIR}/generic-freertos/src
         ${CMAKE_SOURCE_DIR}/platforms/common/storage-ram
+        ${CMAKE_SOURCE_DIR}/platforms/common/io-null
         ${OSAL_REAL_SOURCE_DIR}/src/bsp/shared/inc
     )
     target_compile_definitions(${BSP_TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_" ${ARGN})

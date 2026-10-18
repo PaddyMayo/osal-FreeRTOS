@@ -24,6 +24,7 @@
 
 #include "generic_freertos_bsp_internal.h"
 #include "bsp_storage.h"
+#include "bsp_io.h"
 
 OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 
@@ -417,6 +418,9 @@ static bool OS_BSP_StorageIsValid(const struct lfs_config *Config)
 */
 int main(int argc, char *argv[])
 {
+    /* First, so the console works for everything below, including the error reports */
+    OS_BSP_Console_DeviceInit();
+
     /*
      * Initially clear the global objects
      */

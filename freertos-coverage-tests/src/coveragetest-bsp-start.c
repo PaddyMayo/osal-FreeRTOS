@@ -69,6 +69,8 @@ extern bool                   UT_Stub_PauseSignalsBlocked;
 extern bool                   UT_Stub_PauseReturnsOnce;
 extern char                   UT_Stub_Console[];
 extern size_t                 UT_Stub_ConsoleLen;
+extern uint32_t               UT_Stub_ConsoleInitCount;
+extern size_t                 UT_Stub_ConsoleLenAtInit;
 
 /* What the stubbed storage functions report, declared in freertos-bsp-start-stubs.c */
 extern lfs_size_t UT_Stub_StorageReadSize;
@@ -423,6 +425,23 @@ void Test_Main_StorageConfigInvalid(void)
     UtAssert_STUB_COUNT(vTaskStartScheduler, 0);
 }
 
+void Test_Main_ConsoleInit(void)
+{
+    /* The report of an invalid storage configuration is the first thing main() writes to the console */
+    UT_Stub_StorageBlockSize = 0;
+    UtAssert_INT32_EQ(UT_Main(0, NULL), EXIT_FAILURE);
+    AssertConsole("STORAGE CONFIG INVALID\n");
+
+    UtAssert_UINT32_EQ(UT_Stub_ConsoleInitCount, 1);
+    UtAssert_True(UT_Stub_ConsoleLenAtInit == 0, "the console device is started before anything is written to it");
+
+    /* A normal start starts it too, once */
+    UT_Stub_StorageReset();
+    UT_Stub_ConsoleInitCount = 0;
+    UtAssert_INT32_EQ(UT_Main(0, NULL), UT_RETURNED(EXIT_SUCCESS));
+    UtAssert_UINT32_EQ(UT_Stub_ConsoleInitCount, 1);
+}
+
 void Test_StaticAllocationHooks(void)
 {
     StaticTask_t          *IdleTcb;
@@ -462,6 +481,8 @@ void Osapi_Test_Setup(void)
     UT_Stub_PauseCount                   = 0;
     UT_Stub_PauseSignalsBlocked          = false;
     UT_Stub_ConsoleLen                   = 0;
+    UT_Stub_ConsoleInitCount             = 0;
+    UT_Stub_ConsoleLenAtInit             = SIZE_MAX;
     OS_BSP_GenericFreeRTOSGlobal.Halting = false;
     AppExitCode                          = 0;
 }
@@ -480,6 +501,7 @@ void UtTest_Setup(void)
     ADD_TEST(Main_TaskCreateFails);
     ADD_TEST(Main_StorageConfig);
     ADD_TEST(Main_StorageConfigInvalid);
+    ADD_TEST(Main_ConsoleInit);
     ADD_TEST(StackOverflowHook);
     ADD_TEST(AssertFailed);
     ADD_TEST(HaltKeepsSleeping);
