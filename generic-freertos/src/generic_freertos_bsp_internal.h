@@ -10,7 +10,6 @@
 #define GENERIC_FREERTOS_BSP_INTERNAL_H
 
 #include <stdbool.h>
-#include <stddef.h>
 
 #include "lfs.h"
 
@@ -90,40 +89,51 @@ void      *OS_BSP_Storage_ProgBuffer(void);
 void      *OS_BSP_Storage_LookaheadBuffer(void);
 
 /*
- * Console device functions
+ * Console UART
  *
- * Defined by the vendor, in the console source listed in OSAL_FREERTOS_SOURCES
- * (bsp_io.c, with bsp_io.h next to it). One the vendor leaves out is an
- * undefined reference at link time.
+ * The vendor supplies one function, OS_BSP_Uart_Configure, declared in its bsp_io.h
+ * and defined in the console source listed in OSAL_FREERTOS_SOURCES (bsp_io.c, with
+ * bsp_io.h next to it). It brings the UART up however the hardware needs (pins,
+ * clock gating, registers) and returns a struct with at least these members. The
+ * BSP never names the struct's type, so the vendor chooses it.
  *
- * DeviceInit is called once, first thing in main(): the scheduler has not started,
- * interrupts are at their reset state and only one thread exists. It makes
- * DeviceWrite usable (clocks, pins, baud rate). It cannot report a failure, so a
- * device that fails to start must make DeviceWrite do nothing.
+ *   uint32_t BaudRate           bits per second the device runs at
+ *   uint32_t ClockHz            clock feeding the UART, used to bound the wait
+ *   bool   (*TxReady)(void)     true if TxByte would be taken now; never blocks
+ *   void   (*TxByte)(uint8_t)   hands one byte to the UART and returns at once
  *
- * DeviceWrite sends Len bytes. Buf is read-only, valid only for the call and not
- * NUL-terminated, and Len may be 0 or as large as the console buffer. The bytes
- * are sent as given: lines end in a plain '\n', so a device that needs "\r\n"
- * converts them itself. All of them must be handed to the hardware before it
- * returns, since nothing is left to finish the job later. It must always return,
- * even with nothing listening on the other end: it never waits on flow control,
- * and drops what the device still refuses after a bounded time, so the fatal
- * paths always reach OS_BSP_Halt.
+ * A member that is missing or has another type fails the build, see bsp_console.c.
+ * There is no status member: a vendor that cannot bring the UART up returns a struct
+ * of zeros, which OS_BSP_Console_DeviceInit rejects.
  *
- * DeviceWrite runs from a task holding the BSP lock, and also, without the lock,
- * from the fatal paths in bsp_start.c, which can run from an ISR, a critical
- * section, with interrupts masked, before the scheduler starts, or in the middle
- * of another DeviceWrite on the same CPU. So it must not call FreeRTOS, use the
- * heap, wait for an interrupt or assume a lock, it must leave the hardware usable
- * if a second call interrupts it, and it must fit the stack of an ISR.
+ * OS_BSP_Uart_Configure runs once, first thing in main(): the scheduler has not
+ * started, interrupts are at their reset state and only one thread exists. It must
+ * not use FreeRTOS or the heap.
  *
- * DeviceRead copies up to MaxLen received bytes and returns how many, 0 when none
- * are waiting. It never blocks and is only called from a task, by one reader at a
- * time. OSAL itself never calls it. The vendor owns the receive buffering and its
- * overrun policy; a device with no input returns 0.
+ * TxReady and TxByte are a few register accesses. They run from a task holding the
+ * BSP lock, and also, without it, from the fatal paths in bsp_start.c, which can run
+ * from an ISR, a critical section or with interrupts masked, or in the middle of the
+ * same functions on the same CPU. So they must not call FreeRTOS, use the heap or
+ * block, and must fit the stack of an ISR. A fatal path that interrupts the normal
+ * one between TxReady and TxByte can garble bytes, but never hangs.
+ *
+ * The loop over the bytes, the "\r\n" conversion and the bounded wait for TxReady
+ * are the BSP's, in bsp_console.c.
  */
-void   OS_BSP_Console_DeviceInit(void);
-void   OS_BSP_Console_DeviceWrite(const char *Buf, size_t Len);
-size_t OS_BSP_Console_DeviceRead(char *Buf, size_t MaxLen);
+
+/*
+ * What OS_BSP_Console_DeviceInit returns, 0 when the console is usable. The codes
+ * are positive because OS_BSP_ReportNumber prints a negative number as 0.
+ */
+#define OS_BSP_CONSOLE_ERR_ACCESSOR 1 /* TxReady or TxByte is NULL */
+#define OS_BSP_CONSOLE_ERR_RATE     2 /* BaudRate or ClockHz is 0 */
+#define OS_BSP_CONSOLE_ERR_RANGE    3 /* BaudRate is above ClockHz */
+
+/*
+ * Calls OS_BSP_Uart_Configure and checks what it returned. With an accessor missing
+ * the console drops everything written to it. With a bad rate it stays usable, so
+ * main() can report the failure through it.
+ */
+int OS_BSP_Console_DeviceInit(void);
 
 #endif /* GENERIC_FREERTOS_BSP_INTERNAL_H */
