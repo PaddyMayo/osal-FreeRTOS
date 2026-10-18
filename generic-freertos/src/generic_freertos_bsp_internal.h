@@ -10,6 +10,7 @@
 #define GENERIC_FREERTOS_BSP_INTERNAL_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "lfs.h"
 
@@ -87,5 +88,42 @@ lfs_size_t OS_BSP_Storage_LookaheadSize(void);
 void      *OS_BSP_Storage_ReadBuffer(void);
 void      *OS_BSP_Storage_ProgBuffer(void);
 void      *OS_BSP_Storage_LookaheadBuffer(void);
+
+/*
+ * Console device functions
+ *
+ * Defined by the vendor, in the console source listed in OSAL_FREERTOS_SOURCES
+ * (bsp_io.c, with bsp_io.h next to it). One the vendor leaves out is an
+ * undefined reference at link time.
+ *
+ * DeviceInit is called once, first thing in main(): the scheduler has not started,
+ * interrupts are at their reset state and only one thread exists. It makes
+ * DeviceWrite usable (clocks, pins, baud rate). It cannot report a failure, so a
+ * device that fails to start must make DeviceWrite do nothing.
+ *
+ * DeviceWrite sends Len bytes. Buf is read-only, valid only for the call and not
+ * NUL-terminated, and Len may be 0 or as large as the console buffer. The bytes
+ * are sent as given: lines end in a plain '\n', so a device that needs "\r\n"
+ * converts them itself. All of them must be handed to the hardware before it
+ * returns, since nothing is left to finish the job later. It must always return,
+ * even with nothing listening on the other end: it never waits on flow control,
+ * and drops what the device still refuses after a bounded time, so the fatal
+ * paths always reach OS_BSP_Halt.
+ *
+ * DeviceWrite runs from a task holding the BSP lock, and also, without the lock,
+ * from the fatal paths in bsp_start.c, which can run from an ISR, a critical
+ * section, with interrupts masked, before the scheduler starts, or in the middle
+ * of another DeviceWrite on the same CPU. So it must not call FreeRTOS, use the
+ * heap, wait for an interrupt or assume a lock, it must leave the hardware usable
+ * if a second call interrupts it, and it must fit the stack of an ISR.
+ *
+ * DeviceRead copies up to MaxLen received bytes and returns how many, 0 when none
+ * are waiting. It never blocks and is only called from a task, by one reader at a
+ * time. OSAL itself never calls it. The vendor owns the receive buffering and its
+ * overrun policy; a device with no input returns 0.
+ */
+void   OS_BSP_Console_DeviceInit(void);
+void   OS_BSP_Console_DeviceWrite(const char *Buf, size_t Len);
+size_t OS_BSP_Console_DeviceRead(char *Buf, size_t MaxLen);
 
 #endif /* GENERIC_FREERTOS_BSP_INTERNAL_H */

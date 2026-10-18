@@ -161,6 +161,17 @@ void OS_BSP_ConsoleOutput_Impl(const char *Str, size_t DataLen)
     UT_Stub_ConsoleLen += DataLen;
 }
 
+/* main() starts the vendor's console device before anything is written to it, so how much it had written by then is
+ * kept */
+uint32_t UT_Stub_ConsoleInitCount;
+size_t   UT_Stub_ConsoleLenAtInit;
+
+void OS_BSP_Console_DeviceInit(void)
+{
+    UT_Stub_ConsoleInitCount++;
+    UT_Stub_ConsoleLenAtInit = UT_Stub_ConsoleLen;
+}
+
 /*
  * The vendor's storage functions, which main() fills the littlefs configuration
  * from. The callbacks are never called here, so they only return success; the

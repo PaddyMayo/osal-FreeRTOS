@@ -3,15 +3,16 @@
  *
  * Purpose:
  *   OSAL BSP debug console implementation, shared across every FreeRTOS
- *   BSP.
+ *   BSP. The output goes to the vendor's console device, see
+ *   generic_freertos_bsp_internal.h.
  *
- *   TODO: no console backend yet, OS_BSP_ConsoleOutput_Impl and
- *   OS_BSP_ConsoleSetMode_Impl are templates.
+ *   TODO: OS_BSP_ConsoleSetMode_Impl is a template.
  */
 
 #include <stdint.h>
 
 #include "bsp-impl.h"
+#include "bsp_io.h"
 
 /*----------------------------------------------------------------
    OS_BSP_ConsoleOutput_Impl
@@ -19,7 +20,7 @@
  ------------------------------------------------------------------*/
 void OS_BSP_ConsoleOutput_Impl(const char *Str, size_t DataLen)
 {
-    /* TODO: write DataLen bytes of Str to the console */
+    OS_BSP_Console_DeviceWrite(Str, DataLen);
 }
 
 /*----------------------------------------------------------------

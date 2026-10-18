@@ -27,7 +27,7 @@
 #   set(OSAL_FREERTOS_CPU_CLOCK_HZ                   <hz>            CACHE STRING "" FORCE)  # only with CORE_CLOCK
 #   set(OSAL_FREERTOS_KERNEL_INTERRUPT_PRIORITY      <c-expr>        CACHE STRING "" FORCE)  # only with INTERRUPT_PRIORITIES
 #   set(OSAL_FREERTOS_MAX_SYSCALL_INTERRUPT_PRIORITY <c-expr>        CACHE STRING "" FORCE)  # only with INTERRUPT_PRIORITIES
-#   set(OSAL_FREERTOS_SOURCES                        <path>[;<path>] CACHE STRING "" FORCE)  # startup code, vector table, and bsp_storage.c with bsp_storage.h next to it
+#   set(OSAL_FREERTOS_SOURCES                        <path>[;<path>] CACHE STRING "" FORCE)  # startup code, vector table, and bsp_storage.c and bsp_io.c, each with its .h next to it
 #   set(OSAL_FREERTOS_LINKER_SCRIPT                  <path>          CACHE STRING "" FORCE)  # absolute path
 #
 ##########################################################################

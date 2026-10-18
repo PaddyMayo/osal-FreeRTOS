@@ -8,5 +8,5 @@ set(OSAL_FREERTOS_TOTAL_HEAP_SIZE 16777216 CACHE STRING "" FORCE)
 
 # Every port names startup code and a linker script. A host build has no vector
 # table, so both are placeholders, see startup.c and link.ld.
-set(OSAL_FREERTOS_SOURCES       "${CMAKE_CURRENT_LIST_DIR}/startup.c;${CMAKE_CURRENT_LIST_DIR}/../common/storage-ram/bsp_storage.c" CACHE STRING "" FORCE)
+set(OSAL_FREERTOS_SOURCES       "${CMAKE_CURRENT_LIST_DIR}/startup.c;${CMAKE_CURRENT_LIST_DIR}/../common/storage-ram/bsp_storage.c;${CMAKE_CURRENT_LIST_DIR}/../common/io-null/bsp_io.c" CACHE STRING "" FORCE)
 set(OSAL_FREERTOS_LINKER_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/link.ld" CACHE STRING "" FORCE)
