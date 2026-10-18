@@ -166,10 +166,15 @@ void OS_BSP_ConsoleOutput_Impl(const char *Str, size_t DataLen)
 uint32_t UT_Stub_ConsoleInitCount;
 size_t   UT_Stub_ConsoleLenAtInit;
 
-void OS_BSP_Console_DeviceInit(void)
+/* What the stubbed OS_BSP_Console_DeviceInit returns, 0 when the console is usable */
+int UT_Stub_ConsoleInitResult;
+
+int OS_BSP_Console_DeviceInit(void)
 {
     UT_Stub_ConsoleInitCount++;
     UT_Stub_ConsoleLenAtInit = UT_Stub_ConsoleLen;
+
+    return UT_Stub_ConsoleInitResult;
 }
 
 /*

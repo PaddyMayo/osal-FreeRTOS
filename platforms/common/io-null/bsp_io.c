@@ -2,25 +2,30 @@
  * File:  bsp_io.c
  *
  * Purpose:
- *   A console that discards its output and has no input, for the CI builds of
- *   the platforms. A vendor replaces this with its own device.
+ *   A console UART that accepts every byte and discards it, for the CI builds
+ *   of the platforms. A vendor replaces this with its own device.
  */
 
 #include "bsp_io.h"
 
-void OS_BSP_Console_DeviceInit(void)
+static bool Uart_TxReady(void)
 {
+    return true;
 }
 
-void OS_BSP_Console_DeviceWrite(const char *Buf, size_t Len)
+static void Uart_TxByte(uint8_t Byte)
 {
-    (void)Buf;
-    (void)Len;
+    (void)Byte;
 }
 
-size_t OS_BSP_Console_DeviceRead(char *Buf, size_t MaxLen)
+struct OS_BSP_UartConfig OS_BSP_Uart_Configure(void)
 {
-    (void)Buf;
-    (void)MaxLen;
-    return 0;
+    struct OS_BSP_UartConfig Config = {
+        .BaudRate = 115200U,
+        .ClockHz  = 16000000U,
+        .TxReady  = Uart_TxReady,
+        .TxByte   = Uart_TxByte,
+    };
+
+    return Config;
 }

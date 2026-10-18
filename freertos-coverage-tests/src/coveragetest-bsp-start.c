@@ -71,6 +71,7 @@ extern char                   UT_Stub_Console[];
 extern size_t                 UT_Stub_ConsoleLen;
 extern uint32_t               UT_Stub_ConsoleInitCount;
 extern size_t                 UT_Stub_ConsoleLenAtInit;
+extern int                    UT_Stub_ConsoleInitResult;
 
 /* What the stubbed storage functions report, declared in freertos-bsp-start-stubs.c */
 extern lfs_size_t UT_Stub_StorageReadSize;
@@ -442,6 +443,19 @@ void Test_Main_ConsoleInit(void)
     UtAssert_UINT32_EQ(UT_Stub_ConsoleInitCount, 1);
 }
 
+void Test_Main_ConsoleInitFails(void)
+{
+    /* A console that fails its check stops the boot after reporting the code, before anything else is set up */
+    UT_Stub_ConsoleInitResult = OS_BSP_CONSOLE_ERR_RANGE;
+    UtAssert_INT32_EQ(UT_Main(0, NULL), EXIT_FAILURE);
+    AssertConsole("CONSOLE INIT FAILED 3\n");
+
+    UtAssert_UINT32_EQ(UT_Stub_ConsoleInitCount, 1);
+    UtAssert_True(UT_Stub_ConsoleLenAtInit == 0, "the console is checked before anything is reported");
+    UtAssert_STUB_COUNT(xTaskCreate, 0);
+    UtAssert_STUB_COUNT(vTaskStartScheduler, 0);
+}
+
 void Test_StaticAllocationHooks(void)
 {
     StaticTask_t          *IdleTcb;
@@ -483,6 +497,7 @@ void Osapi_Test_Setup(void)
     UT_Stub_ConsoleLen                   = 0;
     UT_Stub_ConsoleInitCount             = 0;
     UT_Stub_ConsoleLenAtInit             = SIZE_MAX;
+    UT_Stub_ConsoleInitResult            = 0;
     OS_BSP_GenericFreeRTOSGlobal.Halting = false;
     AppExitCode                          = 0;
 }
@@ -502,6 +517,7 @@ void UtTest_Setup(void)
     ADD_TEST(Main_StorageConfig);
     ADD_TEST(Main_StorageConfigInvalid);
     ADD_TEST(Main_ConsoleInit);
+    ADD_TEST(Main_ConsoleInitFails);
     ADD_TEST(StackOverflowHook);
     ADD_TEST(AssertFailed);
     ADD_TEST(HaltKeepsSleeping);

@@ -24,7 +24,6 @@
 
 #include "generic_freertos_bsp_internal.h"
 #include "bsp_storage.h"
-#include "bsp_io.h"
 
 OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 
@@ -419,7 +418,16 @@ static bool OS_BSP_StorageIsValid(const struct lfs_config *Config)
 int main(int argc, char *argv[])
 {
     /* First, so the console works for everything below, including the error reports */
-    OS_BSP_Console_DeviceInit();
+    int ConsoleStatus = OS_BSP_Console_DeviceInit();
+
+    if (ConsoleStatus != 0)
+    {
+        /* Dropped if an accessor is missing, otherwise the UART may well work and this shows */
+        OS_BSP_ReportString("CONSOLE INIT FAILED ");
+        OS_BSP_ReportNumber(ConsoleStatus);
+        OS_BSP_ReportString("\n");
+        return EXIT_FAILURE;
+    }
 
     /*
      * Initially clear the global objects
