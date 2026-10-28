@@ -91,3 +91,45 @@ repos:
         language: system
         pass_filenames: false
         files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+
+      # The same port cross compiled for another CPU, and the host build with the
+      # unit tests on, so every platform has a build here.
+      - id: freertos-cross-posix-aarch64
+        name: freertos cross build - posix-aarch64
+        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
+        args: [posix-aarch64]
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+      - id: freertos-build-posix
+        name: freertos build - posix
+        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake && cmake --build build/$0 --target osal -j'
+        args: [posix]
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+
+      # MISRA C:2012 on the port's own code, on the posix build's defines and include
+      # paths (build/posix is configured by the hooks above). Any violation fails.
+      # misra-config is suppressed: it only says a name could not be resolved, and
+      # what is left unresolved is the console's vendor macros (bsp_console.c), which
+      # no one build defines. The rules are still checked on everything it did parse.
+      - id: freertos-misra
+        name: freertos misra
+        entry: >-
+          cppcheck --addon=misra --enable=style --error-exitcode=1 --quiet --inline-suppr
+          --suppressions-list=misra-suppressions.txt
+          --suppress=missingIncludeSystem --suppress=misra-config
+          -D__GNUC__ -DLFS_NO_MALLOC -DOSAL_FREERTOS_MINIMAL_STACK_SIZE=PTHREAD_STACK_MIN
+          -DOSAL_FREERTOS_PORT_CLEAN_UP_TCB=vPortCancelThread -DOSAL_FREERTOS_PORT_ENDS_SCHEDULER=1
+          '-DOSAL_FREERTOS_PORT_HEADER="pthread.h"' -DOSAL_FREERTOS_PORT_POSIX=1
+          -DOSAL_FREERTOS_TICK_RATE_HZ=100 -DOSAL_FREERTOS_TOTAL_HEAP_SIZE=16777216
+          -Ithird_party/osal/src/os/inc -Ibuild/posix/osal_build/inc -Ifreertos/inc
+          -Igeneric-freertos/src -Igeneric-freertos/config -Ithird_party/osal/src/os/shared/inc
+          -Ithird_party/osal/src/bsp/shared/inc -Ithird_party/FreeRTOS-Kernel/include
+          -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix
+          -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix/utils
+          -Ithird_party/littlefs freertos generic-freertos
+        language: system
+        pass_filenames: false
+        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
