@@ -8,6 +8,10 @@ set(OSAL_SYSTEM_BSPTYPE generic-freertos)
 set(OSAL_EXT_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE PATH "")
 set(ENABLE_UNIT_TESTS TRUE CACHE BOOL "")
 
+# OSAL's own coverage tests are for its vxworks and shared code, not this port,
+# and they do not link here. The port's tests are in freertos-coverage-tests/.
+set(OSALCOVERAGE_TARGET_OSTYPE "" CACHE STRING "")
+
 enable_testing()
 
 add_subdirectory(third_party/osal osal_build)
