@@ -1,0 +1,39 @@
+# Suppressions for the freertos-misra pre-commit hook (cppcheck --suppressions-list).
+#
+# Code that is not this port's: the FreeRTOS kernel, OSAL, littlefs, and the
+# headers the build generates.
+*:third_party/*
+*:build/*
+
+# --enable=style is what makes the addon report MISRA rules (they are style
+# findings), and it turns cppcheck's own style checks on too. This hook is for
+# MISRA; the cppcheck hook is for those.
+constVariablePointer
+constParameterPointer
+
+# The MISRA C:2012 rules the port's own code (freertos/, generic-freertos/) breaks
+# today, with how many places each had when this list was made. Every rule not
+# listed here is enforced. Fix a rule, then delete its line, so the list only
+# shrinks. Do not add a line to get a change through.
+misra-c2012-8.7     # 47
+misra-c2012-15.5    # 39
+misra-c2012-2.7     # 25
+misra-c2012-10.4    # 21
+misra-c2012-2.5     # 14
+misra-c2012-17.3    # 14
+misra-c2012-17.7    # 12
+misra-c2012-12.1    # 6
+misra-c2012-8.9     # 4
+misra-c2012-20.10   # 4
+misra-c2012-20.1    # 4
+misra-c2012-19.2    # 4
+misra-c2012-1.4     # 4
+misra-c2012-11.5    # 3
+misra-c2012-11.2    # 3
+misra-c2012-21.5    # 1
+misra-c2012-20.7    # 1
+misra-c2012-20.5    # 1
+misra-c2012-15.7    # 1
+misra-c2012-11.6    # 1
+misra-c2012-11.4    # 1
+misra-c2012-10.8    # 1

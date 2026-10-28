@@ -4,8 +4,12 @@ on:
     branches: [main]
   pull_request:
 
+# One job: pre-commit is the single definition of every check, so CI runs what
+# `pre-commit run --all-files` runs locally. That is the formatting and static
+# checks, the white-box tests with the coverage gate, a build of every platform
+# and MISRA (.pre-commit-config.yaml).
 jobs:
-  pre-check:
+  build-and-test:
     runs-on: ubuntu-latest
     container: ghcr.io/paddymayo/osal-freertos-dev:latest
     steps:
@@ -16,24 +20,3 @@ jobs:
           submodules: recursive
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: pre-commit run --all-files
-
-  build-and-test:
-    runs-on: ubuntu-latest
-    container: ghcr.io/paddymayo/osal-freertos-dev:latest
-    needs: pre-check
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: cmake -S . -B build/posix -C platforms/posix/config.cmake
-      - run: cmake --build build/posix --target osal -j
-
-  post-check:
-    runs-on: ubuntu-latest
-    container: ghcr.io/paddymayo/osal-freertos-dev:latest
-    needs: build-and-test
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - run: cppcheck --addon=misra freertos generic-freertos
