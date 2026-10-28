@@ -4,19 +4,57 @@ on:
     branches: [main]
   pull_request:
 
-# One job: pre-commit is the single definition of every check, so CI runs what
-# `pre-commit run --all-files` runs locally. That is the formatting and static
-# checks, the white-box tests with the coverage gate, a build of every platform
-# and MISRA (.pre-commit-config.yaml).
+# pre-commit is the single definition of every check, and its hooks run the
+# Makefile's targets, so CI runs what `pre-commit run --all-files` runs locally.
+# Each leg of the matrix runs some of the hooks in .pre-commit-config.yaml, so a
+# platform or a check that fails shows up as its own job. A hook that is not named
+# in a leg does not run in CI, so name a new hook here.
 jobs:
-  build-and-test:
+  checks:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     container: ghcr.io/paddymayo/osal-freertos-dev:latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: static
+            hooks: clang-format cppcheck
+          - name: coverage
+            hooks: freertos-coverage
+          - name: posix
+            hooks: freertos-build-posix
+          - name: misra
+            hooks: freertos-misra
+          - name: posix-aarch64
+            hooks: freertos-cross-posix-aarch64
+          - name: cortex-m0
+            hooks: freertos-cross-cortex-m0
+          - name: cortex-m3
+            hooks: freertos-cross-cortex-m3
+          - name: cortex-m4f
+            hooks: freertos-cross-cortex-m4f
+          - name: cortex-m7
+            hooks: freertos-cross-cortex-m7
+          - name: cortex-m33
+            hooks: freertos-cross-cortex-m33
     steps:
-      # Submodules are needed by the freertos-coverage hooks, which configure
-      # and build the coverage tests against third_party/osal.
+      # Submodules are needed by the builds and the coverage tests, which compile
+      # third_party/osal and the FreeRTOS kernel.
       - uses: actions/checkout@v4
         with:
           submodules: recursive
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: pre-commit run --all-files
+      - run: |
+          for hook in ${{ matrix.hooks }}; do
+            pre-commit run "$hook" --all-files || exit 1
+          done
+
+  # The one check the ruleset requires, so it does not list every leg above. It
+  # runs even when a leg failed, and fails then.
+  build-and-test:
+    needs: checks
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.checks.result }}" = success
