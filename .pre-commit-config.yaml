@@ -13,123 +13,118 @@ repos:
         language: system
         files: \.(c|h)$
 
-      # The coverage gate: configure, build and run the white-box tests, then
-      # gcovr reads the gcov data and fails below the thresholds in gcovr.cfg
-      # (100% lines and branches). Hooks run in this order.
-      - id: freertos-coverage-configure
-        name: freertos coverage - configure
-        entry: cmake -S . -B build/posix -C platforms/posix/config.cmake
-        language: system
-        pass_filenames: false
-        files: &freertos_coverage_files ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|platforms/)
+      # The builds and tests run the Makefile's targets (make help), so a hook and
+      # a person run the same commands.
 
-      - id: freertos-coverage-build
-        name: freertos coverage - build tests
-        entry: cmake --build build/posix --target freertos_coverage_tests -j
-        language: system
-        pass_filenames: false
-        files: *freertos_coverage_files
-
-      # Stale counters from earlier runs would hide a test that stopped covering.
-      - id: freertos-coverage-clean
-        name: freertos coverage - clear old counters
-        entry: find build/posix/freertos-coverage-tests -name '*.gcda' -delete
-        language: system
-        pass_filenames: false
-        files: *freertos_coverage_files
-
-      - id: freertos-coverage-test
-        name: freertos coverage - run tests
-        entry: ctest --test-dir build/posix -R '^coverage-freertos-' --output-on-failure
-        language: system
-        pass_filenames: false
-        files: *freertos_coverage_files
-
-      - id: freertos-coverage-gate
-        name: freertos coverage - gcov, 100% lines/branches
-        entry: gcovr build/posix/freertos-coverage-tests
+      # The white-box tests, then gcovr fails below the thresholds in gcovr.cfg
+      # (100% lines and branches).
+      - id: freertos-coverage
+        name: freertos coverage - white-box tests, 100% lines/branches
+        entry: make
+        args: [test, coverage]
         language: system
         pass_filenames: false
         verbose: true
-        files: *freertos_coverage_files
-      # Cross-compile the osal library for each Cortex-M platform, so the
-      # ARM-only code (e.g. the halt path in bsp_console.c) is always built.
-      # Each platform gets its own build/<platform>/ directory. Host tests do
-      # not run on these, so ENABLE_UNIT_TESTS is off.
+        files: ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|platforms/|Makefile$)
+
+      # Build the osal library for each platform, so the ARM-only code (e.g. the
+      # halt path in bsp_console.c) is always built. Each platform gets its own
+      # build/<platform>/ directory. The tests only run on posix, so the others
+      # build without them.
       - id: freertos-cross-cortex-m0
         name: freertos cross build - cortex-m0
-        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
-        args: [cortex-m0]
+        entry: make
+        args: [build, cortex-m0]
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: &freertos_build_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$)
       - id: freertos-cross-cortex-m3
         name: freertos cross build - cortex-m3
-        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
-        args: [cortex-m3]
+        entry: make
+        args: [build, cortex-m3]
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: *freertos_build_files
       - id: freertos-cross-cortex-m4f
         name: freertos cross build - cortex-m4f
-        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
-        args: [cortex-m4f]
+        entry: make
+        args: [build, cortex-m4f]
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: *freertos_build_files
       - id: freertos-cross-cortex-m7
         name: freertos cross build - cortex-m7
-        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
-        args: [cortex-m7]
+        entry: make
+        args: [build, cortex-m7]
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: *freertos_build_files
       - id: freertos-cross-cortex-m33
         name: freertos cross build - cortex-m33
-        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
-        args: [cortex-m33]
+        entry: make
+        args: [build, cortex-m33]
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: *freertos_build_files
 
       # The same port cross compiled for another CPU, and the host build with the
       # unit tests on, so every platform has a build here.
       - id: freertos-cross-posix-aarch64
         name: freertos cross build - posix-aarch64
-        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake -DENABLE_UNIT_TESTS=OFF && cmake --build build/$0 --target osal -j'
-        args: [posix-aarch64]
+        entry: make
+        args: [build, posix-aarch64]
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: *freertos_build_files
       - id: freertos-build-posix
         name: freertos build - posix
-        entry: bash -c 'cmake -S . -B build/$0 -C platforms/$0/config.cmake && cmake --build build/$0 --target osal -j'
-        args: [posix]
+        entry: make
+        args: [build, posix]
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: *freertos_build_files
 
       # MISRA C:2012 on the port's own code, on the posix build's defines and include
-      # paths (build/posix is configured by the hooks above). Any violation fails.
-      # misra-config is suppressed: it only says a name could not be resolved, and
-      # what is left unresolved is the console's vendor macros (bsp_console.c), which
-      # no one build defines. The rules are still checked on everything it did parse.
+      # paths. It configures build/posix first, because the include paths include the
+      # headers that configure generates, so it does not depend on another hook having
+      # run. Any violation fails. misra-config is suppressed: it only says a name could
+      # not be resolved, and what is left unresolved is the console's vendor macros
+      # (bsp_console.c), which no one build defines. The rules are still checked on
+      # everything it did parse.
       - id: freertos-misra
         name: freertos misra
-        entry: >-
-          cppcheck --addon=misra --enable=style --error-exitcode=1 --quiet --inline-suppr
-          --suppressions-list=misra-suppressions.txt
-          --suppress=missingIncludeSystem --suppress=misra-config
-          -D__GNUC__ -DLFS_NO_MALLOC -DOSAL_FREERTOS_MINIMAL_STACK_SIZE=PTHREAD_STACK_MIN
-          -DOSAL_FREERTOS_PORT_CLEAN_UP_TCB=vPortCancelThread -DOSAL_FREERTOS_PORT_ENDS_SCHEDULER=1
-          '-DOSAL_FREERTOS_PORT_HEADER="pthread.h"' -DOSAL_FREERTOS_PORT_POSIX=1
-          -DOSAL_FREERTOS_TICK_RATE_HZ=100 -DOSAL_FREERTOS_TOTAL_HEAP_SIZE=16777216
-          -Ithird_party/osal/src/os/inc -Ibuild/posix/osal_build/inc -Ifreertos/inc
-          -Igeneric-freertos/src -Igeneric-freertos/config -Ithird_party/osal/src/os/shared/inc
-          -Ithird_party/osal/src/bsp/shared/inc -Ithird_party/FreeRTOS-Kernel/include
-          -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix
-          -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix/utils
-          -Ithird_party/littlefs freertos generic-freertos
+        entry: bash -c 'cmake -S . -B build/posix -C platforms/posix/config.cmake > /dev/null && exec cppcheck "$@"' bash
+        args:
+          - --addon=misra
+          - --enable=style
+          - --error-exitcode=1
+          - --quiet
+          - --inline-suppr
+          - --suppressions-list=misra-suppressions.txt
+          - --suppress=missingIncludeSystem
+          - --suppress=misra-config
+          - -D__GNUC__
+          - -DLFS_NO_MALLOC
+          - -DOSAL_FREERTOS_MINIMAL_STACK_SIZE=PTHREAD_STACK_MIN
+          - -DOSAL_FREERTOS_PORT_CLEAN_UP_TCB=vPortCancelThread
+          - -DOSAL_FREERTOS_PORT_ENDS_SCHEDULER=1
+          - -DOSAL_FREERTOS_PORT_HEADER="pthread.h"
+          - -DOSAL_FREERTOS_PORT_POSIX=1
+          - -DOSAL_FREERTOS_TICK_RATE_HZ=100
+          - -DOSAL_FREERTOS_TOTAL_HEAP_SIZE=16777216
+          - -Ithird_party/osal/src/os/inc
+          - -Ibuild/posix/osal_build/inc
+          - -Ifreertos/inc
+          - -Igeneric-freertos/src
+          - -Igeneric-freertos/config
+          - -Ithird_party/osal/src/os/shared/inc
+          - -Ithird_party/osal/src/bsp/shared/inc
+          - -Ithird_party/FreeRTOS-Kernel/include
+          - -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix
+          - -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix/utils
+          - -Ithird_party/littlefs
+          - freertos
+          - generic-freertos
         language: system
         pass_filenames: false
-        files: ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$)
+        files: *freertos_build_files
