@@ -25,6 +25,78 @@
 #include "generic_freertos_bsp_internal.h"
 #include "bsp_storage.h"
 
+/*----------------------------------------------------------------
+   The storage configuration
+
+   The vendor defines it as macros in its bsp_storage.h, see
+   generic_freertos_bsp_internal.h. A geometry that breaks a rule littlefs
+   asserts when it mounts stops the build instead of being an assert in the
+   middle of a mount. A macro the vendor left out stops it too: the compiler
+   names it as undeclared, since every one is used below.
+ ------------------------------------------------------------------*/
+
+/*
+ * Stops the build, naming the macro, if a value littlefs needs is 0. Several
+ * rules below divide by these sizes, so they are checked first.
+ */
+#define OS_BSP_STORAGE_NONZERO(Name) _Static_assert((Name) != 0, #Name " must not be 0")
+
+/*
+ * Stops the build, naming both macros, if Value does not divide evenly by Of.
+ * littlefs lays out its blocks and caches in whole units of the read and
+ * program sizes.
+ */
+#define OS_BSP_STORAGE_MULTIPLE(Value, Of) _Static_assert((Value) % (Of) == 0, #Value " must be a multiple of " #Of)
+
+/*
+ * 1 if Buffer is an array, 0 if it is a pointer. Only an array has a type that
+ * differs from the type of the address of its first element, which is a
+ * pointer either way. That lets one test tell a real buffer from a pointer
+ * that could be NULL or point at too little.
+ */
+#define OS_BSP_STORAGE_IS_ARRAY(Buffer) (!__builtin_types_compatible_p(__typeof__(Buffer), __typeof__(&(Buffer)[0])))
+
+/*
+ * Stops the build unless Buffer is an array of at least Size bytes. littlefs
+ * does not allocate (LFS_NO_MALLOC) and reads and writes Size bytes through
+ * the buffers the vendor hands it.
+ */
+#define OS_BSP_STORAGE_BUFFER(Buffer, Size)                                     \
+    _Static_assert(OS_BSP_STORAGE_IS_ARRAY(Buffer) && sizeof(Buffer) >= (Size), \
+                   #Buffer " must be an array of at least " #Size " bytes")
+
+/*
+ * Rules
+ *
+ * What littlefs requires when the file system is mounted (most of it is
+ * asserted in lfs_init()), checked here at build time. The zero checks come
+ * first, so the first error names the cause.
+ */
+
+/* 0 is invalid for every one of these; for the cycles, -1 turns wear leveling off */
+OS_BSP_STORAGE_NONZERO(OS_BSP_STORAGE_READ_SIZE);
+OS_BSP_STORAGE_NONZERO(OS_BSP_STORAGE_PROG_SIZE);
+OS_BSP_STORAGE_NONZERO(OS_BSP_STORAGE_BLOCK_SIZE);
+OS_BSP_STORAGE_NONZERO(OS_BSP_STORAGE_BLOCK_COUNT);
+OS_BSP_STORAGE_NONZERO(OS_BSP_STORAGE_BLOCK_CYCLES);
+OS_BSP_STORAGE_NONZERO(OS_BSP_STORAGE_CACHE_SIZE);
+OS_BSP_STORAGE_NONZERO(OS_BSP_STORAGE_LOOKAHEAD_SIZE);
+
+/* Blocks and caches are made of whole reads and programs, and a block of whole caches */
+OS_BSP_STORAGE_MULTIPLE(OS_BSP_STORAGE_BLOCK_SIZE, OS_BSP_STORAGE_READ_SIZE);
+OS_BSP_STORAGE_MULTIPLE(OS_BSP_STORAGE_BLOCK_SIZE, OS_BSP_STORAGE_PROG_SIZE);
+OS_BSP_STORAGE_MULTIPLE(OS_BSP_STORAGE_CACHE_SIZE, OS_BSP_STORAGE_READ_SIZE);
+OS_BSP_STORAGE_MULTIPLE(OS_BSP_STORAGE_CACHE_SIZE, OS_BSP_STORAGE_PROG_SIZE);
+OS_BSP_STORAGE_MULTIPLE(OS_BSP_STORAGE_BLOCK_SIZE, OS_BSP_STORAGE_CACHE_SIZE);
+
+/* The lookahead window is a bitmap, so each byte of it tracks 8 blocks */
+OS_BSP_STORAGE_MULTIPLE(OS_BSP_STORAGE_LOOKAHEAD_SIZE, 8);
+
+/* The read and program caches are one cache each, the lookahead buffer is the window */
+OS_BSP_STORAGE_BUFFER(OS_BSP_STORAGE_READ_BUFFER, OS_BSP_STORAGE_CACHE_SIZE);
+OS_BSP_STORAGE_BUFFER(OS_BSP_STORAGE_PROG_BUFFER, OS_BSP_STORAGE_CACHE_SIZE);
+OS_BSP_STORAGE_BUFFER(OS_BSP_STORAGE_LOOKAHEAD_BUFFER, OS_BSP_STORAGE_LOOKAHEAD_SIZE);
+
 OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 
 /*----------------------------------------------------------------
@@ -386,24 +458,6 @@ static void OS_BSP_StartupTask(void *pvParameters)
     OS_BSP_Shutdown_Impl();
 }
 
-/*----------------------------------------------------------------
-   OS_BSP_StorageIsValid
-
-   Checks the storage configuration against the rules littlefs asserts when it
-   mounts, so a bad geometry fails startup with a message instead of an assert
-   in the middle of a mount. Every size is checked for zero before it is
-   divided by.
- ------------------------------------------------------------------*/
-static bool OS_BSP_StorageIsValid(const struct lfs_config *Config)
-{
-    return Config->read_size != 0 && Config->prog_size != 0 && Config->block_size != 0 && Config->block_count != 0
-           && Config->cache_size != 0 && Config->lookahead_size != 0 && Config->block_size % Config->read_size == 0
-           && Config->block_size % Config->prog_size == 0 && Config->cache_size % Config->read_size == 0
-           && Config->cache_size % Config->prog_size == 0 && Config->block_size % Config->cache_size == 0
-           && Config->lookahead_size % 8 == 0 && Config->read_buffer != NULL && Config->prog_buffer != NULL
-           && Config->lookahead_buffer != NULL;
-}
-
 /******************************************************************************
 **
 **  Purpose:
@@ -445,28 +499,21 @@ int main(int argc, char *argv[])
 
     OS_BSP_GenericFreeRTOSGlobal.StorageConfig = &StorageConfig;
 
-    /* Fill every member of the littlefs configuration from the vendor's storage functions */
+    /* Fill every member of the littlefs configuration from the vendor's storage callbacks and macros */
     OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read             = OS_BSP_Storage_Read;
     OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog             = OS_BSP_Storage_Prog;
     OS_BSP_GenericFreeRTOSGlobal.StorageConfig->erase            = OS_BSP_Storage_Erase;
     OS_BSP_GenericFreeRTOSGlobal.StorageConfig->sync             = OS_BSP_Storage_Sync;
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read_size        = OS_BSP_Storage_ReadSize();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog_size        = OS_BSP_Storage_ProgSize();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_size       = OS_BSP_Storage_BlockSize();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_count      = OS_BSP_Storage_BlockCount();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_cycles     = OS_BSP_Storage_BlockCycles();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->cache_size       = OS_BSP_Storage_CacheSize();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->lookahead_size   = OS_BSP_Storage_LookaheadSize();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read_buffer      = OS_BSP_Storage_ReadBuffer();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog_buffer      = OS_BSP_Storage_ProgBuffer();
-    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->lookahead_buffer = OS_BSP_Storage_LookaheadBuffer();
-
-    if (!OS_BSP_StorageIsValid(OS_BSP_GenericFreeRTOSGlobal.StorageConfig))
-    {
-        /* littlefs would assert on this configuration when the file system is mounted */
-        OS_BSP_ReportString("STORAGE CONFIG INVALID\n");
-        return EXIT_FAILURE;
-    }
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read_size        = OS_BSP_STORAGE_READ_SIZE;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog_size        = OS_BSP_STORAGE_PROG_SIZE;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_size       = OS_BSP_STORAGE_BLOCK_SIZE;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_count      = OS_BSP_STORAGE_BLOCK_COUNT;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->block_cycles     = OS_BSP_STORAGE_BLOCK_CYCLES;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->cache_size       = OS_BSP_STORAGE_CACHE_SIZE;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->lookahead_size   = OS_BSP_STORAGE_LOOKAHEAD_SIZE;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->read_buffer      = OS_BSP_STORAGE_READ_BUFFER;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->prog_buffer      = OS_BSP_STORAGE_PROG_BUFFER;
+    OS_BSP_GenericFreeRTOSGlobal.StorageConfig->lookahead_buffer = OS_BSP_STORAGE_LOOKAHEAD_BUFFER;
 
     /*
      * Save the argc/argv arguments for future use.

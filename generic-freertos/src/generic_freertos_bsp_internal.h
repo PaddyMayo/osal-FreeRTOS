@@ -56,16 +56,36 @@ typedef struct
 extern OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 
 /*
- * Storage device functions
+ * Storage device
  *
- * Defined by the vendor, in the storage source listed in OSAL_FREERTOS_SOURCES.
- * main() fills the littlefs configuration from them, so one the vendor leaves
- * out is an undefined reference at link time.
+ * Defined by the vendor: the callbacks in the storage source listed in
+ * OSAL_FREERTOS_SOURCES, the rest as macros in the bsp_storage.h next to it.
+ * main() fills the littlefs configuration from them.
  *
- * The callbacks return 0, or a negative LFS_ERR_* value (LFS_ERR_IO for a failed
- * transfer, LFS_ERR_CORRUPT for a block that went bad). The buffers must exist
- * for the life of the program (littlefs does not malloc, LFS_NO_MALLOC), and the
- * cache size must not exceed OS_FREERTOS_LFS_FILE_CACHE_SIZE (see
+ * The callbacks are functions, so one the vendor leaves out is an undefined
+ * reference at link time. They return 0, or a negative LFS_ERR_* value
+ * (LFS_ERR_IO for a failed transfer, LFS_ERR_CORRUPT for a block that went bad).
+ *
+ * The rest are macros, so bsp_start.c checks them at build time: one the vendor
+ * leaves out stops the build with an #error, and a value that breaks a rule
+ * littlefs asserts when it mounts stops it with a _Static_assert. The sizes, the
+ * count and the cycles are integer constant expressions.
+ *
+ *   OS_BSP_STORAGE_READ_SIZE         bytes per read, not 0, divides the block and cache sizes
+ *   OS_BSP_STORAGE_PROG_SIZE         bytes per program, not 0, divides the block and cache sizes
+ *   OS_BSP_STORAGE_BLOCK_SIZE        bytes per erasable block, not 0, a multiple of the cache size
+ *   OS_BSP_STORAGE_BLOCK_COUNT       blocks on the device, not 0
+ *   OS_BSP_STORAGE_BLOCK_CYCLES      erases before a block is moved, -1 for never
+ *   OS_BSP_STORAGE_CACHE_SIZE        bytes per cache, not 0, a multiple of the read and prog sizes
+ *   OS_BSP_STORAGE_LOOKAHEAD_SIZE    bytes of lookahead window, not 0, a multiple of 8
+ *   OS_BSP_STORAGE_READ_BUFFER       the read cache, CACHE_SIZE bytes
+ *   OS_BSP_STORAGE_PROG_BUFFER       the program cache, CACHE_SIZE bytes
+ *   OS_BSP_STORAGE_LOOKAHEAD_BUFFER  the lookahead window, LOOKAHEAD_SIZE bytes
+ *
+ * Each buffer is the name of an array of static storage, since it must exist for
+ * the life of the program (littlefs does not malloc, LFS_NO_MALLOC). The build
+ * checks that it is an array, not a pointer, of at least the size given above.
+ * The cache size must not exceed OS_FREERTOS_LFS_FILE_CACHE_SIZE (see
  * freertos/inc/os-impl-filesys.h).
  */
 int OS_BSP_Storage_Read(const struct lfs_config *c, lfs_block_t block, lfs_off_t off, void *buffer, lfs_size_t size);
@@ -76,17 +96,6 @@ int OS_BSP_Storage_Prog(const struct lfs_config *c,
                         lfs_size_t               size);
 int OS_BSP_Storage_Erase(const struct lfs_config *c, lfs_block_t block);
 int OS_BSP_Storage_Sync(const struct lfs_config *c);
-
-lfs_size_t OS_BSP_Storage_ReadSize(void);
-lfs_size_t OS_BSP_Storage_ProgSize(void);
-lfs_size_t OS_BSP_Storage_BlockSize(void);
-lfs_size_t OS_BSP_Storage_BlockCount(void);
-int32_t    OS_BSP_Storage_BlockCycles(void);
-lfs_size_t OS_BSP_Storage_CacheSize(void);
-lfs_size_t OS_BSP_Storage_LookaheadSize(void);
-void      *OS_BSP_Storage_ReadBuffer(void);
-void      *OS_BSP_Storage_ProgBuffer(void);
-void      *OS_BSP_Storage_LookaheadBuffer(void);
 
 /*
  * Console UART
