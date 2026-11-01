@@ -22,8 +22,6 @@ jobs:
             hooks: clang-format cppcheck
           - name: coverage
             hooks: freertos-coverage
-          - name: posix
-            hooks: freertos-build-posix freertos-misra-posix
           - name: posix-aarch64
             hooks: freertos-cross-posix-aarch64 freertos-misra-posix-aarch64
           - name: cortex-m0

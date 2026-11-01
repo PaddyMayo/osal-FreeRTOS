@@ -1,8 +1,10 @@
-# Vendor config for the GCC_POSIX build for aarch64 Linux that CI runs:
-#   cmake -S . -B build/posix-aarch64 -C platforms/posix-aarch64/config.cmake -DENABLE_UNIT_TESTS=OFF
+# Vendor config for the GCC_POSIX build for aarch64 Linux, the one platform the
+# tests run on. A test program is run under qemu-aarch64, which the Makefile
+# gives cmake as CMAKE_CROSSCOMPILING_EMULATOR:
+#   make test
 #
-# The same host simulator as platforms/posix, cross compiled for another
-# architecture, so the port is built and run on a CPU other than the host's.
+# It is the port's host simulator cross compiled for aarch64, so it builds and
+# runs the same on any machine that has the cross compiler and qemu-user.
 set(PORT GCC_POSIX CACHE STRING "" FORCE)
 
 set(CMAKE_SYSTEM_NAME      Linux                CACHE STRING "" FORCE)

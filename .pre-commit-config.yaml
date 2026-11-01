@@ -29,8 +29,8 @@ repos:
 
       # Build the osal library for each platform, so the ARM-only code (e.g. the
       # halt path in bsp_console.c) is always built. Each platform gets its own
-      # build/<platform>/ directory. The tests only run on posix, so the others
-      # build without them.
+      # build/<platform>/ directory. The tests only run on posix-aarch64 (under
+      # qemu), so the others build without them.
       - id: freertos-cross-cortex-m0
         name: freertos cross build - cortex-m0
         entry: make
@@ -67,19 +67,12 @@ repos:
         pass_filenames: false
         files: *freertos_build_files
 
-      # The same port cross compiled for another CPU, and the host build with the
-      # unit tests on, so every platform has a build here.
+      # The POSIX port for aarch64 Linux, with the unit tests on: the one platform
+      # the tests run on.
       - id: freertos-cross-posix-aarch64
         name: freertos cross build - posix-aarch64
         entry: make
         args: [build, posix-aarch64]
-        language: system
-        pass_filenames: false
-        files: *freertos_build_files
-      - id: freertos-build-posix
-        name: freertos build - posix
-        entry: make
-        args: [build, posix]
         language: system
         pass_filenames: false
         files: *freertos_build_files
@@ -88,20 +81,13 @@ repos:
       # once per platform, so each is checked as it builds: the defines and include
       # paths come from the platform's own build (make misra). Any violation fails;
       # misra-suppressions.txt lists the rules the port breaks today.
-      - id: freertos-misra-posix
-        name: freertos misra - posix
-        entry: make
-        args: [misra, posix]
-        language: system
-        pass_filenames: false
-        files: &freertos_misra_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$|misra-suppressions\.txt$)
       - id: freertos-misra-posix-aarch64
         name: freertos misra - posix-aarch64
         entry: make
         args: [misra, posix-aarch64]
         language: system
         pass_filenames: false
-        files: *freertos_misra_files
+        files: &freertos_misra_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$|misra-suppressions\.txt$)
       - id: freertos-misra-cortex-m0
         name: freertos misra - cortex-m0
         entry: make
