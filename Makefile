@@ -9,7 +9,7 @@
 # Make treats every word as a goal of its own, so the first word is the command
 # and the rest are its targets, which have empty rules further down.
 
-PLATFORMS    := posix posix-aarch64 cortex-m0 cortex-m3 cortex-m4f cortex-m7 cortex-m33
+PLATFORMS    := posix-aarch64 cortex-m0 cortex-m3 cortex-m4f cortex-m7 cortex-m33
 TEST_TARGETS := whitebox blackbox coverage
 COMMANDS     := build clean test misra help
 
@@ -80,11 +80,11 @@ help:
 	@echo 'make misra <platform...|all>   MISRA C:2012 check of freertos/, generic-freertos/ and platforms/'
 	@echo 'make test                      run whitebox, then blackbox'
 	@echo 'make test whitebox             coverage tests of freertos/ (freertos-coverage-tests/)'
-	@echo 'make test blackbox             the OSAL tests, built and run on the host'
+	@echo 'make test blackbox             the OSAL tests, run on posix-aarch64 under qemu'
 	@echo 'make test coverage             whitebox, then the 100% lines/branches gate'
 	@echo
 	@echo 'platforms: $(PLATFORMS)'
-	@echo 'tests run on posix; the other platforms only build'
+	@echo 'tests run on posix-aarch64, under qemu; the other platforms only build'
 
 build: $(addprefix _build-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)))
 
@@ -99,10 +99,11 @@ $(PLATFORMS) all $(TEST_TARGETS): ; @:
 
 # ---- Work, one platform or test at a time -------------------------------------
 
-# Only the host build runs the tests; the cross builds leave them off, as the
-# freertos-cross-* pre-commit hooks do
+# Only posix-aarch64 builds the tests, and ctest runs each of them under
+# qemu-aarch64; the other builds leave them off, as the freertos-cross-*
+# pre-commit hooks do
 _configure-%:
-	cmake -S . -B build/$* -C platforms/$*/config.cmake $(if $(filter posix,$*),,-DENABLE_UNIT_TESTS=OFF)
+	cmake -S . -B build/$* -C platforms/$*/config.cmake $(if $(filter posix-aarch64,$*),'-DCMAKE_CROSSCOMPILING_EMULATOR=qemu-aarch64;-L;/usr/aarch64-linux-gnu',-DENABLE_UNIT_TESTS=OFF)
 
 _build-%: _configure-%
 	cmake --build build/$* --target osal -j
@@ -117,7 +118,7 @@ _clean-%:
 #
 # compile_commands.json is cut down first:
 #  - to the files of freertos/, generic-freertos/ and platforms/. Without it the
-#    coverage tests (posix), which compile the same sources against fake kernel
+#    coverage tests (posix-aarch64), which compile the same sources against fake kernel
 #    headers, and the OSAL and kernel sources are checked too.
 #  - -isystem becomes -I. cppcheck leaves the -isystem paths out, which loses
 #    FreeRTOSConfig.h, and a file whose include fails is skipped with an error
@@ -138,21 +139,17 @@ _misra-%: _configure-%
 	  --suppressions-list=misra-suppressions.txt \
 	  --suppress=missingIncludeSystem --suppress=misra-config
 
-POSIX_CONFIGURE := cmake -S . -B build/posix -C platforms/posix/config.cmake
-
 # The freertos-coverage-* pre-commit hooks. Counters from an earlier run would
 # hide a test that stopped covering, so they go before the tests run.
-_test-whitebox:
-	$(POSIX_CONFIGURE)
-	cmake --build build/posix --target freertos_coverage_tests -j
-	find build/posix/freertos-coverage-tests -name '*.gcda' -delete
-	ctest --test-dir build/posix -R '^coverage-freertos-' --output-on-failure
+_test-whitebox: _configure-posix-aarch64
+	cmake --build build/posix-aarch64 --target freertos_coverage_tests -j
+	find build/posix-aarch64/freertos-coverage-tests -name '*.gcda' -delete
+	ctest --test-dir build/posix-aarch64 -R '^coverage-freertos-' --output-on-failure
 
 # Everything that is not a coverage test; no --target, so the test programs are built
-_test-blackbox:
-	$(POSIX_CONFIGURE)
-	cmake --build build/posix -j
-	ctest --test-dir build/posix -E '^coverage-' --output-on-failure
+_test-blackbox: _configure-posix-aarch64
+	cmake --build build/posix-aarch64 -j
+	ctest --test-dir build/posix-aarch64 -E '^coverage-' --output-on-failure
 
 _test-coverage: _test-whitebox
-	gcovr build/posix/freertos-coverage-tests
+	gcovr build/posix-aarch64/freertos-coverage-tests
