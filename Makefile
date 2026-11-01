@@ -3,7 +3,7 @@
 #
 #   make build  <platform...|all>      configure and build the osal library
 #   make clean  <platform...|all>      remove the build directory of a platform
-#   make test   [whitebox|blackbox|coverage]
+#   make test   [whitebox|blackbox|coverage] [platform...|all]
 #   make misra  <platform...|all>      MISRA C:2012 check of the port's code
 #
 # Make treats every word as a goal of its own, so the first word is the command
@@ -12,6 +12,13 @@
 PLATFORMS    := posix-aarch64 cortex-m0 cortex-m3 cortex-m4f cortex-m7 cortex-m33
 TEST_TARGETS := whitebox blackbox coverage
 COMMANDS     := build clean test misra help
+
+# The platform the tests run on when none is named
+TEST_PLATFORM := posix-aarch64
+# ctest ends a test after this many seconds. A board's QEMU process does not
+# exit when the guest halts, so without it a test that never reports would wait
+# for ctest's default of 25 minutes.
+TEST_TIMEOUT  := 120
 
 COMMAND := $(firstword $(MAKECMDGOALS))
 TARGETS := $(filter-out $(COMMAND),$(MAKECMDGOALS))
@@ -25,7 +32,7 @@ TARGETS := $(filter-out $(COMMAND),$(MAKECMDGOALS))
 
 # ---- Check the command line before anything runs ----------------------------
 
-USAGE := Use: make build <platform...|all>, make clean <platform...|all>, make misra <platform...|all>, make test [$(TEST_TARGETS)]. Platforms: $(PLATFORMS)
+USAGE := Use: make build <platform...|all>, make clean <platform...|all>, make misra <platform...|all>, make test [$(TEST_TARGETS)] [platform...|all]. Platforms: $(PLATFORMS)
 
 ifneq ($(MAKECMDGOALS),)
   ifeq ($(filter $(COMMAND),$(COMMANDS)),)
@@ -66,8 +73,8 @@ ifneq ($(MAKECMDGOALS),)
   endif
 
   ifeq ($(COMMAND),test)
-    ifneq ($(filter-out $(TEST_TARGETS),$(TARGETS)),)
-      $(error '$(filter-out $(TEST_TARGETS),$(TARGETS))' is not a test. $(USAGE))
+    ifneq ($(filter-out $(TEST_TARGETS) $(PLATFORMS) all,$(TARGETS)),)
+      $(error '$(filter-out $(TEST_TARGETS) $(PLATFORMS) all,$(TARGETS))' is not a test or a platform. $(USAGE))
     endif
   endif
 endif
@@ -78,13 +85,12 @@ help:
 	@echo 'make build <platform...|all>   configure and build the osal library'
 	@echo 'make clean <platform...|all>   remove build/<platform> for each, nothing else'
 	@echo 'make misra <platform...|all>   MISRA C:2012 check of freertos/, generic-freertos/ and platforms/'
-	@echo 'make test                      run whitebox, then blackbox'
-	@echo 'make test whitebox             coverage tests of freertos/ (freertos-coverage-tests/)'
-	@echo 'make test blackbox             the OSAL tests, run on posix-aarch64 under qemu'
-	@echo 'make test coverage             whitebox, then the 100% lines/branches gate'
-	@echo
-	@echo 'platforms: $(PLATFORMS)'
-	@echo 'tests run on posix-aarch64, under qemu; the other platforms only build'
+	@echo 'make test [kind] [platform...|all]'
+	@echo '  kinds: whitebox   coverage tests of freertos/ (freertos-coverage-tests/)'
+	@echo '         blackbox   the OSAL tests'
+	@echo '         coverage   whitebox, then the 100% lines/branches gate'
+	@echo '  no kind: whitebox, then blackbox'
+	@echo '  no platform: $(TEST_PLATFORM)'
 
 build: $(addprefix _build-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)))
 
@@ -92,18 +98,30 @@ clean: $(addprefix _clean-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)
 
 misra: $(addprefix _misra-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)))
 
-test: $(addprefix _test-,$(if $(TARGETS),$(TARGETS),whitebox blackbox))
+TESTS   := $(or $(filter $(TEST_TARGETS),$(TARGETS)),whitebox blackbox)
+TEST_ON := $(if $(filter all,$(TARGETS)),$(PLATFORMS),$(or $(filter $(PLATFORMS),$(TARGETS)),$(TEST_PLATFORM)))
+
+test: $(foreach test,$(TESTS),$(addprefix _test-$(test)-,$(TEST_ON)))
 
 # The words after the command are only read above
 $(PLATFORMS) all $(TEST_TARGETS): ; @:
 
 # ---- Work, one platform or test at a time -------------------------------------
 
-# Only posix-aarch64 builds the tests, and ctest runs each of them under
-# qemu-aarch64; the other builds leave them off, as the freertos-cross-*
-# pre-commit hooks do
+# The QEMU process each platform's programs run on, as a cmake list that ends
+# where the program goes: cmake runs a test as <this list> <the test>. A Linux
+# program runs under qemu-user; a Cortex-M image is booted on its board.
+QEMU_posix-aarch64 := qemu-aarch64;-L;/usr/aarch64-linux-gnu
+QEMU_cortex-m0     := qemu-system-arm;-M;microbit;-display;none;-kernel
+QEMU_cortex-m3     := qemu-system-arm;-M;mps2-an385;-display;none;-kernel
+QEMU_cortex-m4f    := qemu-system-arm;-M;mps2-an386;-display;none;-kernel
+QEMU_cortex-m7     := qemu-system-arm;-M;mps2-an500;-display;none;-kernel
+QEMU_cortex-m33    := qemu-system-arm;-M;mps2-an505;-display;none;-kernel
+
+# Every platform is configured the same way, with the unit tests on and its QEMU
+# process as the emulator. A platform with no QEMU line above is an error.
 _configure-%:
-	cmake -S . -B build/$* -C platforms/$*/config.cmake $(if $(filter posix-aarch64,$*),'-DCMAKE_CROSSCOMPILING_EMULATOR=qemu-aarch64;-L;/usr/aarch64-linux-gnu',-DENABLE_UNIT_TESTS=OFF)
+	cmake -S . -B build/$* -C platforms/$*/config.cmake '-DCMAKE_CROSSCOMPILING_EMULATOR=$(or $(QEMU_$*),$(error $* has no QEMU_$* line in the Makefile))'
 
 _build-%: _configure-%
 	cmake --build build/$* --target osal -j
@@ -141,15 +159,15 @@ _misra-%: _configure-%
 
 # The freertos-coverage-* pre-commit hooks. Counters from an earlier run would
 # hide a test that stopped covering, so they go before the tests run.
-_test-whitebox: _configure-posix-aarch64
-	cmake --build build/posix-aarch64 --target freertos_coverage_tests -j
-	find build/posix-aarch64/freertos-coverage-tests -name '*.gcda' -delete
-	ctest --test-dir build/posix-aarch64 -R '^coverage-freertos-' --output-on-failure
+_test-whitebox-%: _configure-%
+	cmake --build build/$* --target freertos_coverage_tests -j
+	find build/$*/freertos-coverage-tests -name '*.gcda' -delete
+	ctest --test-dir build/$* -R '^coverage-freertos-' --timeout $(TEST_TIMEOUT) --output-on-failure
 
 # Everything that is not a coverage test; no --target, so the test programs are built
-_test-blackbox: _configure-posix-aarch64
-	cmake --build build/posix-aarch64 -j
-	ctest --test-dir build/posix-aarch64 -E '^coverage-' --output-on-failure
+_test-blackbox-%: _configure-%
+	cmake --build build/$* -j
+	ctest --test-dir build/$* -E '^coverage-' --timeout $(TEST_TIMEOUT) --output-on-failure
 
-_test-coverage: _test-whitebox
-	gcovr build/posix-aarch64/freertos-coverage-tests
+_test-coverage-%: _test-whitebox-%
+	gcovr build/$*/freertos-coverage-tests

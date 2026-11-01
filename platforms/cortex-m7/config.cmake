@@ -1,5 +1,5 @@
 # Vendor config for the GCC_ARM_CM7 build that CI runs:
-#   cmake -S . -B build/cortex-m7 -C platforms/cortex-m7/config.cmake -DENABLE_UNIT_TESTS=OFF
+#   cmake -S . -B build/cortex-m7 -C platforms/cortex-m7/config.cmake
 #
 # The board is the Arm MPS2 with the AN500 image (Cortex-M7).
 set(PORT GCC_ARM_CM7 CACHE STRING "" FORCE)

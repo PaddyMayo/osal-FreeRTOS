@@ -1,5 +1,5 @@
 # Vendor config for the GCC_ARM_CM3 build that CI runs:
-#   cmake -S . -B build/cortex-m3 -C platforms/cortex-m3/config.cmake -DENABLE_UNIT_TESTS=OFF
+#   cmake -S . -B build/cortex-m3 -C platforms/cortex-m3/config.cmake
 #
 # The board is the Arm MPS2 with the AN385 image (Cortex-M3, 25 MHz system clock).
 set(PORT GCC_ARM_CM3 CACHE STRING "" FORCE)

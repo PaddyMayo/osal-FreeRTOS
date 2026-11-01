@@ -1,5 +1,5 @@
 # Vendor config for the GCC_ARM_CM4F build that CI runs:
-#   cmake -S . -B build/cortex-m4f -C platforms/cortex-m4f/config.cmake -DENABLE_UNIT_TESTS=OFF
+#   cmake -S . -B build/cortex-m4f -C platforms/cortex-m4f/config.cmake
 #
 # The board is the Arm MPS2 with the AN386 image (Cortex-M4F).
 set(PORT GCC_ARM_CM4F CACHE STRING "" FORCE)
