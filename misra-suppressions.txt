@@ -1,9 +1,10 @@
-# Suppressions for the freertos-misra pre-commit hook (cppcheck --suppressions-list).
+# Suppressions for the freertos-misra-* pre-commit hooks (cppcheck --suppressions-list).
 #
 # Code that is not this port's: the FreeRTOS kernel, OSAL, littlefs, and the
-# headers the build generates.
-*:third_party/*
-*:build/*
+# headers the build generates. Only the MISRA rules are suppressed there: a file whose
+# include fails reports an error in a third_party/ header, which must still show.
+misra-c2012-*:third_party/*
+misra-c2012-*:build/*
 
 # --enable=style is what makes the addon report MISRA rules (they are style
 # findings), and it turns cppcheck's own style checks on too. This hook is for

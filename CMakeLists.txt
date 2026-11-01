@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(osal_freertos_port C)
 
+# The MISRA check (make misra) reads each file's defines and include paths from it
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(FREERTOS_HEAP 4 CACHE STRING "")
 
 set(OSAL_SYSTEM_OSTYPE freertos)
