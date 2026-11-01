@@ -84,47 +84,56 @@ repos:
         pass_filenames: false
         files: *freertos_build_files
 
-      # MISRA C:2012 on the port's own code, on the posix build's defines and include
-      # paths. It configures build/posix first, because the include paths include the
-      # headers that configure generates, so it does not depend on another hook having
-      # run. Any violation fails. misra-config is suppressed: it only says a name could
-      # not be resolved, and what is left unresolved is the console's vendor macros
-      # (bsp_console.c), which no one build defines. The rules are still checked on
-      # everything it did parse.
-      - id: freertos-misra
-        name: freertos misra
-        entry: bash -c 'cmake -S . -B build/posix -C platforms/posix/config.cmake > /dev/null && exec cppcheck "$@"' bash
-        args:
-          - --addon=misra
-          - --enable=style
-          - --error-exitcode=1
-          - --quiet
-          - --inline-suppr
-          - --suppressions-list=misra-suppressions.txt
-          - --suppress=missingIncludeSystem
-          - --suppress=misra-config
-          - -D__GNUC__
-          - -DLFS_NO_MALLOC
-          - -DOSAL_FREERTOS_MINIMAL_STACK_SIZE=PTHREAD_STACK_MIN
-          - -DOSAL_FREERTOS_PORT_CLEAN_UP_TCB=vPortCancelThread
-          - -DOSAL_FREERTOS_PORT_ENDS_SCHEDULER=1
-          - -DOSAL_FREERTOS_PORT_HEADER="pthread.h"
-          - -DOSAL_FREERTOS_PORT_POSIX=1
-          - -DOSAL_FREERTOS_TICK_RATE_HZ=100
-          - -DOSAL_FREERTOS_TOTAL_HEAP_SIZE=16777216
-          - -Ithird_party/osal/src/os/inc
-          - -Ibuild/posix/osal_build/inc
-          - -Ifreertos/inc
-          - -Igeneric-freertos/src
-          - -Igeneric-freertos/config
-          - -Ithird_party/osal/src/os/shared/inc
-          - -Ithird_party/osal/src/bsp/shared/inc
-          - -Ithird_party/FreeRTOS-Kernel/include
-          - -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix
-          - -Ithird_party/FreeRTOS-Kernel/portable/ThirdParty/GCC/Posix/utils
-          - -Ithird_party/littlefs
-          - freertos
-          - generic-freertos
+      # MISRA C:2012 on the port's own code (freertos/, generic-freertos/, platforms/),
+      # once per platform, so each is checked as it builds: the defines and include
+      # paths come from the platform's own build (make misra). Any violation fails;
+      # misra-suppressions.txt lists the rules the port breaks today.
+      - id: freertos-misra-posix
+        name: freertos misra - posix
+        entry: make
+        args: [misra, posix]
         language: system
         pass_filenames: false
-        files: *freertos_build_files
+        files: &freertos_misra_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$|misra-suppressions\.txt$)
+      - id: freertos-misra-posix-aarch64
+        name: freertos misra - posix-aarch64
+        entry: make
+        args: [misra, posix-aarch64]
+        language: system
+        pass_filenames: false
+        files: *freertos_misra_files
+      - id: freertos-misra-cortex-m0
+        name: freertos misra - cortex-m0
+        entry: make
+        args: [misra, cortex-m0]
+        language: system
+        pass_filenames: false
+        files: *freertos_misra_files
+      - id: freertos-misra-cortex-m3
+        name: freertos misra - cortex-m3
+        entry: make
+        args: [misra, cortex-m3]
+        language: system
+        pass_filenames: false
+        files: *freertos_misra_files
+      - id: freertos-misra-cortex-m4f
+        name: freertos misra - cortex-m4f
+        entry: make
+        args: [misra, cortex-m4f]
+        language: system
+        pass_filenames: false
+        files: *freertos_misra_files
+      - id: freertos-misra-cortex-m7
+        name: freertos misra - cortex-m7
+        entry: make
+        args: [misra, cortex-m7]
+        language: system
+        pass_filenames: false
+        files: *freertos_misra_files
+      - id: freertos-misra-cortex-m33
+        name: freertos misra - cortex-m33
+        entry: make
+        args: [misra, cortex-m33]
+        language: system
+        pass_filenames: false
+        files: *freertos_misra_files
