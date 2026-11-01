@@ -1,5 +1,5 @@
 # Vendor config for the GCC_ARM_CM33_NTZ_NONSECURE build that CI runs:
-#   cmake -S . -B build/cortex-m33 -C platforms/cortex-m33/config.cmake -DENABLE_UNIT_TESTS=OFF
+#   cmake -S . -B build/cortex-m33 -C platforms/cortex-m33/config.cmake
 #
 # The board is the Arm MPS2 with the AN505 image (Cortex-M33).
 set(PORT GCC_ARM_CM33_NTZ_NONSECURE CACHE STRING "" FORCE)
