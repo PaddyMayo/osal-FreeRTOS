@@ -8,4 +8,6 @@
  * fills the startup slot (OSAL_FREERTOS_SOURCES) every platform names.
  */
 
+// An empty translation unit is not valid C, and this type is never used
+// cppcheck-suppress misra-c2012-2.3
 typedef int osal_freertos_posix_aarch64_startup_placeholder;

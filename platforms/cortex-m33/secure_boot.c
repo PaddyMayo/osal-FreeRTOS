@@ -14,10 +14,14 @@
 #include <stdint.h>
 
 /* The Non-secure vector table, from the shared startup code */
-extern void (*const OSAL_VectorTable[])(void);
+#include "../common/cortex_m_startup.h"
 
 /* Top of the Secure stack, defined by link.ld */
 extern uint32_t _secure_estack;
+
+void Secure_Reset_Handler(void);
+
+extern void (*const OSAL_SecureVectorTable[4])(void);
 
 #define REG32(address) (*(volatile uint32_t *)(address))
 
@@ -96,8 +100,11 @@ __attribute__((section(".secure_text"))) static void Secure_AllowNonSecureAccess
 
 __attribute__((section(".secure_text"))) void Secure_Reset_Handler(void)
 {
+    /* The vector table holds addresses, and the core wants them as integers */
+    // cppcheck-suppress misra-c2012-11.1
     uint32_t NonSecureStack = (uint32_t)OSAL_VectorTable[0];
     /* BXNS takes the Non-secure state from bit 0 of the address, which must be clear */
+    // cppcheck-suppress misra-c2012-11.1
     uint32_t NonSecureReset = (uint32_t)OSAL_VectorTable[1] & ~1UL;
     uint32_t Index;
 
@@ -113,6 +120,7 @@ __attribute__((section(".secure_text"))) void Secure_Reset_Handler(void)
     /* Faults and NMI go to the Non-secure handlers, where the firmware's own are */
     SCB_AIRCR = (SCB_AIRCR & 0xFFFFUL) | AIRCR_VECTKEY | AIRCR_BFHFNMINS;
 
+    // cppcheck-suppress misra-c2012-11.1
     SCB_VTOR_NS = (uint32_t)OSAL_VectorTable;
     __asm volatile("msr msp_ns, %0" ::"r"(NonSecureStack));
     __asm volatile("bxns %0" ::"r"(NonSecureReset));
@@ -131,7 +139,7 @@ __attribute__((section(".secure_text"))) static void Secure_Spin_Handler(void)
 
 // The table is read by the core, never by C, and the linker script keeps its section
 // cppcheck-suppress unusedStructMember
-__attribute__((section(".secure_isr_vector"), used)) void (*const OSAL_SecureVectorTable[])(void) = {
+__attribute__((section(".secure_isr_vector"), used)) void (*const OSAL_SecureVectorTable[4])(void) = {
     (void (*)(void)) & _secure_estack, /* initial Secure stack pointer */
     Secure_Reset_Handler,              /* reset */
     Secure_Spin_Handler,               /* NMI */
