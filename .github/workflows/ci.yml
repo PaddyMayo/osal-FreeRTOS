@@ -23,21 +23,19 @@ jobs:
           - name: coverage
             hooks: freertos-coverage
           - name: posix
-            hooks: freertos-build-posix
-          - name: misra
-            hooks: freertos-misra
+            hooks: freertos-build-posix freertos-misra-posix
           - name: posix-aarch64
-            hooks: freertos-cross-posix-aarch64
+            hooks: freertos-cross-posix-aarch64 freertos-misra-posix-aarch64
           - name: cortex-m0
-            hooks: freertos-cross-cortex-m0
+            hooks: freertos-cross-cortex-m0 freertos-misra-cortex-m0
           - name: cortex-m3
-            hooks: freertos-cross-cortex-m3
+            hooks: freertos-cross-cortex-m3 freertos-misra-cortex-m3
           - name: cortex-m4f
-            hooks: freertos-cross-cortex-m4f
+            hooks: freertos-cross-cortex-m4f freertos-misra-cortex-m4f
           - name: cortex-m7
-            hooks: freertos-cross-cortex-m7
+            hooks: freertos-cross-cortex-m7 freertos-misra-cortex-m7
           - name: cortex-m33
-            hooks: freertos-cross-cortex-m33
+            hooks: freertos-cross-cortex-m33 freertos-misra-cortex-m33
     steps:
       # Submodules are needed by the builds and the coverage tests, which compile
       # third_party/osal and the FreeRTOS kernel.
