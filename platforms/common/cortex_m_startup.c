@@ -13,6 +13,8 @@
 
 #include <stdint.h>
 
+#include "cortex_m_startup.h"
+
 extern uint32_t _sidata;
 extern uint32_t _sdata;
 extern uint32_t _edata;
@@ -50,7 +52,7 @@ void HardFault_Handler(void);
 
 // The table is read by the core, never by C, and the linker script keeps its section
 // cppcheck-suppress unusedStructMember
-__attribute__((section(".isr_vector"), used)) void (*const OSAL_VectorTable[])(void) = {
+__attribute__((section(".isr_vector"), used)) void (*const OSAL_VectorTable[16])(void) = {
     (void (*)(void)) & _estack, /* initial stack pointer */
     Reset_Handler,              /* reset */
     NMI_Handler,                /* NMI */
@@ -75,16 +77,20 @@ void Reset_Handler(void)
     uint32_t       *Destination;
 
     /* The initial values of .data sit in flash, right after the code */
-    Source = &_sidata;
-    for (Destination = &_sdata; (uintptr_t)Destination < (uintptr_t)&_edata; Destination++)
+    Source      = &_sidata;
+    Destination = &_sdata;
+    while ((uintptr_t)Destination < (uintptr_t)&_edata)
     {
         *Destination = *Source;
+        Destination++;
         Source++;
     }
 
-    for (Destination = &_sbss; (uintptr_t)Destination < (uintptr_t)&_ebss; Destination++)
+    Destination = &_sbss;
+    while ((uintptr_t)Destination < (uintptr_t)&_ebss)
     {
         *Destination = 0U;
+        Destination++;
     }
 
 #if defined(__ARM_FP)
