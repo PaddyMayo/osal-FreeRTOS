@@ -29,7 +29,7 @@ repos:
 
       # Build the osal library for each platform, so the ARM-only code (e.g. the
       # halt path in bsp_console.c) is always built. Each platform gets its own
-      # build/<platform>/ directory. The tests only run on posix-aarch64 (under
+      # build/<platform>/ directory. The tests only run on posix-aarch32 (under
       # qemu), so the others build without them.
       - id: freertos-cross-cortex-m0
         name: freertos cross build - cortex-m0
@@ -67,12 +67,12 @@ repos:
         pass_filenames: false
         files: *freertos_build_files
 
-      # The POSIX port for aarch64 Linux, with the unit tests on: the one platform
+      # The POSIX port for 32-bit Arm Linux, with the unit tests on: the one platform
       # the tests run on.
-      - id: freertos-cross-posix-aarch64
-        name: freertos cross build - posix-aarch64
+      - id: freertos-cross-posix-aarch32
+        name: freertos cross build - posix-aarch32
         entry: make
-        args: [build, posix-aarch64]
+        args: [build, posix-aarch32]
         language: system
         pass_filenames: false
         files: *freertos_build_files
@@ -81,10 +81,10 @@ repos:
       # once per platform, so each is checked as it builds: the defines and include
       # paths come from the platform's own build (make misra). Any violation fails;
       # misra-suppressions.txt lists the rules the port breaks today.
-      - id: freertos-misra-posix-aarch64
-        name: freertos misra - posix-aarch64
+      - id: freertos-misra-posix-aarch32
+        name: freertos misra - posix-aarch32
         entry: make
-        args: [misra, posix-aarch64]
+        args: [misra, posix-aarch32]
         language: system
         pass_filenames: false
         files: &freertos_misra_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$|misra-suppressions\.txt$)

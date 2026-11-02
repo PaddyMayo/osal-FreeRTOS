@@ -9,12 +9,12 @@
 # Make treats every word as a goal of its own, so the first word is the command
 # and the rest are its targets, which have empty rules further down.
 
-PLATFORMS    := posix-aarch64 cortex-m0 cortex-m3 cortex-m4f cortex-m7 cortex-m33
+PLATFORMS    := posix-aarch32 cortex-m0 cortex-m3 cortex-m4f cortex-m7 cortex-m33
 TEST_TARGETS := whitebox blackbox coverage
 COMMANDS     := build clean test misra help
 
 # The platform the tests run on when none is named
-TEST_PLATFORM := posix-aarch64
+TEST_PLATFORM := posix-aarch32
 # ctest ends a test after this many seconds. A board's QEMU process does not
 # exit when the guest halts, so without it a test that never reports would wait
 # for ctest's default of 25 minutes.
@@ -111,7 +111,7 @@ $(PLATFORMS) all $(TEST_TARGETS): ; @:
 # The QEMU process each platform's programs run on, as a cmake list that ends
 # where the program goes: cmake runs a test as <this list> <the test>. A Linux
 # program runs under qemu-user; a Cortex-M image is booted on its board.
-QEMU_posix-aarch64 := qemu-aarch64;-L;/usr/aarch64-linux-gnu
+QEMU_posix-aarch32 := qemu-arm;-L;/usr/arm-linux-gnueabihf
 QEMU_cortex-m0     := qemu-system-arm;-M;microbit;-display;none;-kernel
 QEMU_cortex-m3     := qemu-system-arm;-M;mps2-an385;-display;none;-kernel
 QEMU_cortex-m4f    := qemu-system-arm;-M;mps2-an386;-display;none;-kernel
@@ -136,7 +136,7 @@ _clean-%:
 #
 # compile_commands.json is cut down first:
 #  - to the files of freertos/, generic-freertos/ and platforms/. Without it the
-#    coverage tests (posix-aarch64), which compile the same sources against fake kernel
+#    coverage tests (posix-aarch32), which compile the same sources against fake kernel
 #    headers, and the OSAL and kernel sources are checked too.
 #  - -isystem becomes -I. cppcheck leaves the -isystem paths out, which loses
 #    FreeRTOSConfig.h, and a file whose include fails is skipped with an error

@@ -1,15 +1,15 @@
-# Vendor config for the GCC_POSIX build for aarch64 Linux, the one platform the
-# tests run on. A test program is run under qemu-aarch64, which the Makefile
+# Vendor config for the GCC_POSIX build for 32-bit Arm Linux, the one platform the
+# tests run on. A test program is run under qemu-arm, which the Makefile
 # gives cmake as CMAKE_CROSSCOMPILING_EMULATOR:
 #   make test
 #
-# It is the port's host simulator cross compiled for aarch64, so it builds and
+# It is the port's host simulator cross compiled for 32-bit Arm, so it builds and
 # runs the same on any machine that has the cross compiler and qemu-user.
 set(PORT GCC_POSIX CACHE STRING "" FORCE)
 
 set(CMAKE_SYSTEM_NAME      Linux                CACHE STRING "" FORCE)
-set(CMAKE_SYSTEM_PROCESSOR aarch64              CACHE STRING "" FORCE)
-set(CMAKE_C_COMPILER       aarch64-linux-gnu-gcc CACHE STRING "" FORCE)
+set(CMAKE_SYSTEM_PROCESSOR arm                  CACHE STRING "" FORCE)
+set(CMAKE_C_COMPILER       arm-linux-gnueabihf-gcc CACHE STRING "" FORCE)
 
 # The minimal stack size is left to GCC_POSIX's default (PTHREAD_STACK_MIN)
 set(OSAL_FREERTOS_TICK_RATE_HZ    100 CACHE STRING "" FORCE)
