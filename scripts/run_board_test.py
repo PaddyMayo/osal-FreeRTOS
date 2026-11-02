@@ -48,8 +48,8 @@ class EndPoint(gdb.Breakpoint):
         return True
 
 
-def has_function(name):
-    """Whether the image has a symbol of this name."""
+def has_symbol(name):
+    """Whether the image has a function or variable of this name."""
     try:
         gdb.execute("info address %s" % name, to_string=True)
         return True
@@ -70,6 +70,41 @@ def read_string(address):
         return gdb.parse_and_eval("(const char *)%d" % address).string()
     except gdb.error:
         return "<unreadable>"
+
+
+def symbol_address(name):
+    return int(gdb.parse_and_eval("(unsigned long)&%s" % name)) & 0xFFFFFFFF
+
+
+def write_coverage():
+    """Write the gcda files the image left in its coverage buffer, if it has one.
+
+    The image cannot write files, so coverage-dump.c collects them in RAM, as records
+    of a file name and a 0 byte, a four byte length (least significant first) and the
+    data. The name is the path GCC gave the file in the build tree. Returns False when
+    the data is incomplete.
+    """
+    if not has_symbol("CoverageBuffer"):
+        return True
+
+    lost = read_word(symbol_address("CoverageBufferLost"))
+    if lost:
+        print("the coverage buffer was %d bytes too small" % lost)
+        return False
+
+    used = read_word(symbol_address("CoverageBufferUsed"))
+    data = bytes(gdb.selected_inferior().read_memory(symbol_address("CoverageBuffer"), used))
+    position = 0
+    while position < len(data):
+        end = data.index(b"\0", position)
+        name = data[position:end].decode()
+        length = int.from_bytes(data[end + 1 : end + 5], "little")
+        start = end + 5
+        if name:
+            with open(name, "wb") as gcda:
+                gcda.write(data[start : start + length])
+        position = start + length
+    return True
 
 
 def finish(code, message):
@@ -119,6 +154,8 @@ def describe_fault(name):
 def report():
     if outcome == "exit":
         status = register("r0")
+        if not write_coverage():
+            finish(1, "FAIL: the coverage data could not be read")
         if status == 0:
             finish(0, "PASS: the image ended with status 0")
         finish(1, "FAIL: the image ended with status %d" % status)
@@ -158,10 +195,10 @@ def main():
         ("HardFault_Handler", "hardfault"),
         ("NMI_Handler", "nmi"),
     )
-    if not any(has_function(function) for function, name in endpoints if name == "exit"):
+    if not any(has_symbol(function) for function, name in endpoints if name == "exit"):
         finish(1, "FAIL: the image has no exit point to stop at")
     for function, name in endpoints:
-        if has_function(function):
+        if has_symbol(function):
             EndPoint(function, name)
 
     timer = threading.Timer(TIMEOUT, gdb.interrupt)

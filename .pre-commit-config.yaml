@@ -16,16 +16,16 @@ repos:
       # The builds and tests run the Makefile's targets (make help), so a hook and
       # a person run the same commands.
 
-      # The white-box tests, then gcovr fails below the thresholds in gcovr.cfg
-      # (100% lines and branches).
+      # The white-box tests on every platform (each on its QEMU process), then gcovr
+      # fails below the thresholds in gcovr.cfg (100% lines and branches).
       - id: freertos-coverage
         name: freertos coverage - white-box tests, 100% lines/branches
         entry: make
-        args: [test, coverage]
+        args: [test, coverage, all]
         language: system
         pass_filenames: false
         verbose: true
-        files: ^(freertos/|freertos-coverage-tests/|gcovr\.cfg$|platforms/|Makefile$)
+        files: ^(freertos/|freertos-coverage-tests/|scripts/|gcovr\.cfg$|platforms/|Makefile$)
 
       # Build the osal library for each platform, so the ARM-only code (e.g. the
       # halt path in bsp_console.c) is always built. Each platform gets its own

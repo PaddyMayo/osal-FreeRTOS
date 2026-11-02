@@ -112,14 +112,22 @@ $(PLATFORMS) all $(TEST_TARGETS): ; @:
 # where the program goes: cmake runs a test as <this list> <the test>. A Linux
 # program runs under qemu-user. A Cortex-M image is booted on its board by gdb:
 # a board has no operating system to return a status to, so the script stops the
-# image where it ends and exits with its status (freertos-coverage-tests/run_board_test.py).
-BOARD_RUN := gdb-multiarch;-q;-batch;-x;$(CURDIR)/freertos-coverage-tests/run_board_test.py;--args
+# image where it ends and exits with its status (scripts/run_board_test.py).
+BOARD_RUN := gdb-multiarch;-q;-batch;-x;$(CURDIR)/scripts/run_board_test.py;--args
 
 QEMU_posix-aarch32 := qemu-arm;-L;/usr/arm-linux-gnueabihf
 QEMU_cortex-m3     := cmake;-E;env;QEMU_MACHINE=mps2-an385;$(BOARD_RUN)
 QEMU_cortex-m4f    := cmake;-E;env;QEMU_MACHINE=mps2-an386;$(BOARD_RUN)
 QEMU_cortex-m7     := cmake;-E;env;QEMU_MACHINE=mps2-an500;$(BOARD_RUN)
 QEMU_cortex-m33    := cmake;-E;env;QEMU_MACHINE=mps2-an505;$(BOARD_RUN)
+
+# The gcov that reads a platform's coverage data. It has to come from the same
+# toolchain as the compiler that built the tests: gcov refuses the notes of another version.
+GCOV_posix-aarch32 := arm-linux-gnueabihf-gcov
+GCOV_cortex-m3     := arm-none-eabi-gcov
+GCOV_cortex-m4f    := arm-none-eabi-gcov
+GCOV_cortex-m7     := arm-none-eabi-gcov
+GCOV_cortex-m33    := arm-none-eabi-gcov
 
 # Every platform is configured the same way, with the unit tests on and its QEMU
 # process as the emulator. A platform with no QEMU line above is an error.
@@ -173,4 +181,4 @@ _test-blackbox-%: _configure-%
 	ctest --test-dir build/$* -E '^coverage-' --timeout $(TEST_TIMEOUT) --output-on-failure
 
 _test-coverage-%: _test-whitebox-%
-	gcovr build/$*/freertos-coverage-tests
+	gcovr --gcov-executable $(or $(GCOV_$*),$(error $* has no GCOV_$* line in the Makefile)) build/$*/freertos-coverage-tests

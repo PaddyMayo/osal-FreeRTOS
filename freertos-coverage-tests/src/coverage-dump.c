@@ -19,6 +19,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <gcov.h>
 
@@ -69,22 +70,83 @@ static void CoverageClose(void)
 
 #else
 
-/* A bare-metal board has no files: its output channel is not wired up yet, so the counters are not written */
+/*
+ * A bare-metal board has no files. The gcda streams go into this buffer instead, and
+ * run_board_test.py reads it through the debugger when the run ends and writes the
+ * files on the host. A record is the file name and a 0 byte, the length of the data
+ * as four bytes (least significant first), then the data. The three variables are
+ * global, not static, so that the debugger can find them by name.
+ */
+#define COVERAGE_BUFFER_SIZE 65536U
+
+__attribute__((used)) unsigned char CoverageBuffer[COVERAGE_BUFFER_SIZE];
+__attribute__((used)) unsigned      CoverageBufferUsed;
+/* Bytes that did not fit: the debugger fails the run when this is not 0 */
+__attribute__((used)) unsigned      CoverageBufferLost;
+
+/* Where the length of the record being written sits, or 0 when there is none */
+static unsigned CoverageLengthAt;
+
+static void CoveragePut(const void *Data, unsigned Size)
+{
+    if (Size > COVERAGE_BUFFER_SIZE - CoverageBufferUsed)
+    {
+        CoverageBufferLost += Size;
+        return;
+    }
+
+    (void)memcpy(&CoverageBuffer[CoverageBufferUsed], Data, Size);
+    CoverageBufferUsed += Size;
+}
+
+/* The length of a record is only known once all of its data is in */
+static void CoverageEndRecord(void)
+{
+    if (CoverageLengthAt != 0U)
+    {
+        unsigned Length = CoverageBufferUsed - (CoverageLengthAt + 4U);
+        unsigned Index;
+
+        for (Index = 0U; Index < 4U; Index++)
+        {
+            CoverageBuffer[CoverageLengthAt + Index] = (unsigned char)(Length >> (8U * Index));
+        }
+
+        CoverageLengthAt = 0U;
+    }
+}
+
 static void CoverageFilename(const char *Name, void *Arg)
 {
-    (void)Name;
+    static const unsigned char NoLength[4] = { 0U, 0U, 0U, 0U };
+
     (void)Arg;
+
+    CoverageEndRecord();
+
+    if (Name != NULL)
+    {
+        CoveragePut(Name, (unsigned)strlen(Name));
+    }
+    CoveragePut(NoLength, 1U);
+
+    if (CoverageBufferLost == 0U && CoverageBufferUsed + 4U <= COVERAGE_BUFFER_SIZE)
+    {
+        CoverageLengthAt = CoverageBufferUsed;
+    }
+    CoveragePut(NoLength, 4U);
 }
 
 static void CoverageWrite(const void *Buffer, unsigned Size, void *Arg)
 {
-    (void)Buffer;
-    (void)Size;
     (void)Arg;
+
+    CoveragePut(Buffer, Size);
 }
 
 static void CoverageClose(void)
 {
+    CoverageEndRecord();
 }
 
 #endif
