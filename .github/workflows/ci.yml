@@ -24,8 +24,6 @@ jobs:
             hooks: freertos-coverage
           - name: posix-aarch32
             hooks: freertos-cross-posix-aarch32 freertos-misra-posix-aarch32
-          - name: cortex-m0
-            hooks: freertos-cross-cortex-m0 freertos-misra-cortex-m0
           - name: cortex-m3
             hooks: freertos-cross-cortex-m3 freertos-misra-cortex-m3
           - name: cortex-m4f

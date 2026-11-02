@@ -9,7 +9,7 @@
 # Make treats every word as a goal of its own, so the first word is the command
 # and the rest are its targets, which have empty rules further down.
 
-PLATFORMS    := posix-aarch32 cortex-m0 cortex-m3 cortex-m4f cortex-m7 cortex-m33
+PLATFORMS    := posix-aarch32 cortex-m3 cortex-m4f cortex-m7 cortex-m33
 TEST_TARGETS := whitebox blackbox coverage
 COMMANDS     := build clean test misra help
 
@@ -112,7 +112,6 @@ $(PLATFORMS) all $(TEST_TARGETS): ; @:
 # where the program goes: cmake runs a test as <this list> <the test>. A Linux
 # program runs under qemu-user; a Cortex-M image is booted on its board.
 QEMU_posix-aarch32 := qemu-arm;-L;/usr/arm-linux-gnueabihf
-QEMU_cortex-m0     := qemu-system-arm;-M;microbit;-display;none;-kernel
 QEMU_cortex-m3     := qemu-system-arm;-M;mps2-an385;-display;none;-kernel
 QEMU_cortex-m4f    := qemu-system-arm;-M;mps2-an386;-display;none;-kernel
 QEMU_cortex-m7     := qemu-system-arm;-M;mps2-an500;-display;none;-kernel
