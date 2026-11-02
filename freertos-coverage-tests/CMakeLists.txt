@@ -48,6 +48,38 @@ set(FREERTOS_COVERAGE_INCLUDES
 # itself (src/coverage-dump.c), through __gcov_info_to_gcda from libgcov.
 set(FREERTOS_COVERAGE_FLAGS -fprofile-arcs -ftest-coverage -fprofile-info-section=gcov_info)
 
+# On a Cortex-M platform a test runner is a firmware image, not a Linux program:
+# it takes the platform's startup code (vector table and reset handler) and its
+# linker script, as the product firmware does, plus default handlers for the
+# exceptions the vector table names, which these tests have no kernel to supply.
+# The platform's storage and I/O hooks are the BSP's, which the tests do not use.
+if ("${PORT}" STREQUAL "GCC_POSIX")
+    set(FREERTOS_COVERAGE_FIRMWARE FALSE)
+else ()
+    set(FREERTOS_COVERAGE_FIRMWARE TRUE)
+    set(FREERTOS_COVERAGE_STARTUP_SOURCES ${OSAL_FREERTOS_SOURCES})
+    list(FILTER FREERTOS_COVERAGE_STARTUP_SOURCES EXCLUDE REGEX "bsp_(storage|io)\\.c$")
+    # The startup code runs before .bss is cleared, so it cannot count
+    set_source_files_properties(${FREERTOS_COVERAGE_STARTUP_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-fno-profile-arcs;-fno-test-coverage"
+    )
+    list(APPEND FREERTOS_COVERAGE_STARTUP_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/src/firmware-handlers.c)
+endif ()
+
+# Makes a test runner boot on a Cortex-M platform, see above. Does nothing for the posix port.
+function(freertos_coverage_firmware TARGET)
+    if (FREERTOS_COVERAGE_FIRMWARE)
+        target_sources(${TARGET} PRIVATE ${FREERTOS_COVERAGE_STARTUP_SOURCES})
+        # The tests call malloc, whose _sbrk (newlib's nosys) grows from the symbol
+        # "end". The product has no heap of that kind: its FreeRTOS heap is a static
+        # array in .bss, so the linker script does not define it. Free RAM follows .bss.
+        target_link_options(${TARGET} PRIVATE
+            -T${OSAL_FREERTOS_LINKER_SCRIPT}
+            -Wl,--defsym=end=_ebss
+        )
+    endif ()
+endfunction()
+
 # Sources every module's test executable needs regardless of which OSAL
 # subsystem it targets: the plain (non-scheduler) main(), the OS_task_table/
 # OS_TaskEntryPoint-style shared-layer stand-ins, the minimal UT_BSP_*
@@ -139,6 +171,7 @@ foreach(MODULE_NAME ${FREERTOS_MODULE_LIST})
     target_compile_options(${TESTRUNNER_TARGET} PRIVATE ${FREERTOS_COVERAGE_FLAGS})
     # Named, because a toolchain's own specs (newlib-nano) can leave -lgcov out
     target_link_libraries(${TESTRUNNER_TARGET} PRIVATE gcov)
+    freertos_coverage_firmware(${TESTRUNNER_TARGET})
 
     add_test(NAME coverage-freertos-${MODULE_NAME} COMMAND ${TESTRUNNER_TARGET})
     add_dependencies(freertos_coverage_tests ${TESTRUNNER_TARGET})
@@ -157,6 +190,11 @@ set(FREERTOS_BSP_FILE_LIST
     start
     console
 )
+
+if (FREERTOS_COVERAGE_FIRMWARE)
+    # bsp_start.c's test needs a host: it uses pthread, signals and setjmp
+    list(REMOVE_ITEM FREERTOS_BSP_FILE_LIST start)
+endif ()
 
 set(BSP_COMMON_SOURCES ${FREERTOS_COVERAGE_COMMON_SOURCES})
 list(REMOVE_ITEM BSP_COMMON_SOURCES stubs/osal-shared-stubs.c)
@@ -202,6 +240,7 @@ function(freertos_add_bsp_coverage_test BSP_NAME VARIANT)
     target_compile_definitions(${BSP_TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_" ${ARGN})
     target_compile_options(${BSP_TESTRUNNER_TARGET} PRIVATE ${FREERTOS_COVERAGE_FLAGS})
     target_link_libraries(${BSP_TESTRUNNER_TARGET} PRIVATE gcov)
+    freertos_coverage_firmware(${BSP_TESTRUNNER_TARGET})
 
     # Named coverage-freertos-* so the freertos-coverage-test hook (ctest -R '^coverage-freertos-') runs it
     add_test(NAME coverage-freertos-${BSP_TEST_NAME} COMMAND ${BSP_TESTRUNNER_TARGET})
@@ -217,7 +256,9 @@ endforeach()
 # Ports that cannot end the scheduler (the Cortex-M ports assert in
 # vPortEndScheduler) leave that define out and halt when the application ends.
 # bsp_start.c is built a second time without it to test that branch.
-freertos_add_bsp_coverage_test(start halt)
+if (NOT FREERTOS_COVERAGE_FIRMWARE)
+    freertos_add_bsp_coverage_test(start halt)
+endif ()
 
 # Every freertos/src/os-impl-<module>.c must be in FREERTOS_MODULE_LIST, and so
 # have a coverage test: gcovr only sees files some test executable compiled, so
