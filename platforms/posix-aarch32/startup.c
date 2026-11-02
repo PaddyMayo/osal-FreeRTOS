@@ -1,7 +1,7 @@
 /**
  * \file
  *
- * Purpose: Startup code for the GCC_POSIX build for aarch64 Linux.
+ * Purpose: Startup code for the GCC_POSIX build for 32-bit Arm Linux.
  *
  * A Linux program has no vector table or reset handler: libc's crt starts the
  * program and calls main() in generic-freertos/src/bsp_start.c. This file only
@@ -10,4 +10,4 @@
 
 // An empty translation unit is not valid C, and this type is never used
 // cppcheck-suppress misra-c2012-2.3
-typedef int osal_freertos_posix_aarch64_startup_placeholder;
+typedef int osal_freertos_posix_aarch32_startup_placeholder;
