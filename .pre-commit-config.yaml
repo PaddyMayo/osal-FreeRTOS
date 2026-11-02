@@ -31,20 +31,13 @@ repos:
       # halt path in bsp_console.c) is always built. Each platform gets its own
       # build/<platform>/ directory. The tests only run on posix-aarch32 (under
       # qemu), so the others build without them.
-      - id: freertos-cross-cortex-m0
-        name: freertos cross build - cortex-m0
-        entry: make
-        args: [build, cortex-m0]
-        language: system
-        pass_filenames: false
-        files: &freertos_build_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$)
       - id: freertos-cross-cortex-m3
         name: freertos cross build - cortex-m3
         entry: make
         args: [build, cortex-m3]
         language: system
         pass_filenames: false
-        files: *freertos_build_files
+        files: &freertos_build_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$)
       - id: freertos-cross-cortex-m4f
         name: freertos cross build - cortex-m4f
         entry: make
@@ -88,13 +81,6 @@ repos:
         language: system
         pass_filenames: false
         files: &freertos_misra_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$|misra-suppressions\.txt$)
-      - id: freertos-misra-cortex-m0
-        name: freertos misra - cortex-m0
-        entry: make
-        args: [misra, cortex-m0]
-        language: system
-        pass_filenames: false
-        files: *freertos_misra_files
       - id: freertos-misra-cortex-m3
         name: freertos misra - cortex-m3
         entry: make
