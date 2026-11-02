@@ -4,7 +4,7 @@
  * Purpose: Startup code shared by every Cortex-M platform: vector table, reset
  * handler and the fault handlers. A platform names it in OSAL_FREERTOS_SOURCES.
  *
- * One vector table serves ARMv6-M to ARMv8-M. The configurable fault vectors
+ * One vector table serves ARMv7-M and ARMv8-M. The configurable fault vectors
  * (MemManage, BusFault, UsageFault) stay empty: those faults are not enabled,
  * so they escalate to HardFault. The fault handlers spin, as the comment on
  * OS_BSP_MaskAllInterrupts in bsp_console.c asks, so a debugger can stop on
@@ -26,10 +26,10 @@ extern uint32_t _estack;
 extern int main(int argc, char *argv[]);
 
 /*
- * The FreeRTOS port's handlers. The Armv6-M and Armv8-M ports define them under
- * their standard names, the Armv7-M ports under FreeRTOS's own.
+ * The FreeRTOS port's handlers. The Armv8-M ports define them under their
+ * standard names, the Armv7-M ports under FreeRTOS's own.
  */
-#if defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_8M_BASE__) || defined(__ARM_ARCH_8M_MAIN__)
+#if defined(__ARM_ARCH_8M_BASE__) || defined(__ARM_ARCH_8M_MAIN__)
 #define OSAL_SVC_HANDLER     SVC_Handler
 #define OSAL_PENDSV_HANDLER  PendSV_Handler
 #define OSAL_SYSTICK_HANDLER SysTick_Handler
