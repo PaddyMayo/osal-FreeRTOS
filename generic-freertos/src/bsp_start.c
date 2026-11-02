@@ -127,12 +127,8 @@ OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 #define OS_BSP_ICSR_PENDSVCLR (1UL << 27)
 #define OS_BSP_ICSR_PENDSTCLR (1UL << 25)
 
-/* Armv6-M has 32 interrupts in one register, the later cores up to 480 in 16 */
-#if defined(__ARM_ARCH_6M__)
-#define OS_BSP_NVIC_REGISTERS 1UL
-#else
+/* The NVIC has up to 480 interrupts, 32 to a register */
 #define OS_BSP_NVIC_REGISTERS 16UL
-#endif
 
 static inline void OS_BSP_MaskAllInterrupts(void)
 {

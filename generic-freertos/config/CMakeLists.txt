@@ -25,13 +25,6 @@ if ("${PORT}" STREQUAL "GCC_POSIX")
         PORT_DEFINES               OSAL_FREERTOS_PORT_POSIX=1 OSAL_FREERTOS_PORT_ENDS_SCHEDULER=1
     )
 
-# ARMv6-M (Cortex-M0): core clock, no interrupt priorities
-elseif ("${PORT}" STREQUAL "GCC_ARM_CM0")
-    osal_freertos_platform(
-        CORE_CLOCK
-        PORT_DEFINES OSAL_FREERTOS_PORT_CORTEX_M=1 configENABLE_MPU=0
-    )
-
 # ARMv7-M (Cortex-M3/M4F/M7): core clock and interrupt priorities
 elseif ("${PORT}" MATCHES "^GCC_ARM_(CM3|CM4F|CM7)$")
     osal_freertos_platform(
