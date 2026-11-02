@@ -42,12 +42,19 @@ set(FREERTOS_COVERAGE_INCLUDES
     ${UT_ASSERT_REAL_SOURCE_DIR}/inc
 )
 
+# Every platform instruments the tests the same way. --coverage does not link
+# for Arm: its exit hook, __gcov_exit, is not in the bare-metal libgcov. These
+# flags leave the counters in a section instead, and the test writes them out
+# itself (src/coverage-dump.c), through __gcov_info_to_gcda from libgcov.
+set(FREERTOS_COVERAGE_FLAGS -fprofile-arcs -ftest-coverage -fprofile-info-section=gcov_info)
+
 # Sources every module's test executable needs regardless of which OSAL
 # subsystem it targets: the plain (non-scheduler) main(), the OS_task_table/
 # OS_TaskEntryPoint-style shared-layer stand-ins, the minimal UT_BSP_*
 # implementation, and ut_assert's own OS-agnostic sources.
 set(FREERTOS_COVERAGE_COMMON_SOURCES
     src/main.c
+    src/coverage-dump.c
     stubs/osal-shared-stubs.c
     stubs/ut-bsp-stubs.c
     ${UT_ASSERT_REAL_SOURCE_DIR}/src/utassert.c
@@ -96,7 +103,7 @@ foreach(MODULE_NAME ${FREERTOS_MODULE_LIST})
     add_library(${UTOBJ_TARGET} OBJECT ${IMPL_SRC})
     target_include_directories(${UTOBJ_TARGET} BEFORE PRIVATE fake-inc)
     target_include_directories(${UTOBJ_TARGET} PRIVATE ${FREERTOS_COVERAGE_INCLUDES})
-    target_compile_options(${UTOBJ_TARGET} PRIVATE --coverage)
+    target_compile_options(${UTOBJ_TARGET} PRIVATE ${FREERTOS_COVERAGE_FLAGS})
 
     set(MODULE_SOURCES ${FREERTOS_COVERAGE_COMMON_SOURCES} ${COVERAGETEST_SRC})
     if (MODULE_NAME IN_LIST FREERTOS_OSAL_STUB_MODULES)
@@ -129,8 +136,9 @@ foreach(MODULE_NAME ${FREERTOS_MODULE_LIST})
         )
     endif ()
     target_compile_definitions(${TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_")
-    target_compile_options(${TESTRUNNER_TARGET} PRIVATE --coverage)
-    target_link_options(${TESTRUNNER_TARGET} PRIVATE --coverage)
+    target_compile_options(${TESTRUNNER_TARGET} PRIVATE ${FREERTOS_COVERAGE_FLAGS})
+    # Named, because a toolchain's own specs (newlib-nano) can leave -lgcov out
+    target_link_libraries(${TESTRUNNER_TARGET} PRIVATE gcov)
 
     add_test(NAME coverage-freertos-${MODULE_NAME} COMMAND ${TESTRUNNER_TARGET})
     add_dependencies(freertos_coverage_tests ${TESTRUNNER_TARGET})
@@ -192,8 +200,8 @@ function(freertos_add_bsp_coverage_test BSP_NAME VARIANT)
         ${OSAL_REAL_SOURCE_DIR}/src/bsp/shared/inc
     )
     target_compile_definitions(${BSP_TESTRUNNER_TARGET} PRIVATE "_UNIT_TEST_" ${ARGN})
-    target_compile_options(${BSP_TESTRUNNER_TARGET} PRIVATE --coverage)
-    target_link_options(${BSP_TESTRUNNER_TARGET} PRIVATE --coverage)
+    target_compile_options(${BSP_TESTRUNNER_TARGET} PRIVATE ${FREERTOS_COVERAGE_FLAGS})
+    target_link_libraries(${BSP_TESTRUNNER_TARGET} PRIVATE gcov)
 
     # Named coverage-freertos-* so the freertos-coverage-test hook (ctest -R '^coverage-freertos-') runs it
     add_test(NAME coverage-freertos-${BSP_TEST_NAME} COMMAND ${BSP_TESTRUNNER_TARGET})

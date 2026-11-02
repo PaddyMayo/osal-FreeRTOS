@@ -10,9 +10,12 @@
 #include "uttest.h"
 #include "utassert.h"
 
+#include "coverage-dump.h"
+
 int main(int argc, char *argv[])
 {
     const UtAssert_TestCounter_t *counters;
+    int                           status = 0;
 
     (void)argc;
     (void)argv;
@@ -30,8 +33,11 @@ int main(int argc, char *argv[])
     if (counters->CaseCount[UTASSERT_CASETYPE_FAILURE] > 0 || counters->CaseCount[UTASSERT_CASETYPE_TSF] > 0
         || counters->CaseCount[UTASSERT_CASETYPE_TTF] > 0)
     {
-        return 1;
+        status = 1;
     }
 
-    return 0;
+    /* The counters are written here, not by an exit hook: see coverage-dump.c */
+    CoverageDump();
+
+    return status;
 }
