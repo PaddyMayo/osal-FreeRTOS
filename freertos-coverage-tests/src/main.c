@@ -12,6 +12,10 @@
 
 #include "coverage-dump.h"
 
+#if !defined(__unix__)
+#include "firmware.h"
+#endif
+
 int main(int argc, char *argv[])
 {
     const UtAssert_TestCounter_t *counters;
@@ -39,5 +43,10 @@ int main(int argc, char *argv[])
     /* The counters are written here, not by an exit hook: see coverage-dump.c */
     CoverageDump();
 
+#if defined(__unix__)
     return status;
+#else
+    /* A board has no operating system to return to: the debugger reads the status here */
+    CoverageTestExit(status);
+#endif
 }

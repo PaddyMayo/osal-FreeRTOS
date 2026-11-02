@@ -110,12 +110,16 @@ $(PLATFORMS) all $(TEST_TARGETS): ; @:
 
 # The QEMU process each platform's programs run on, as a cmake list that ends
 # where the program goes: cmake runs a test as <this list> <the test>. A Linux
-# program runs under qemu-user; a Cortex-M image is booted on its board.
+# program runs under qemu-user. A Cortex-M image is booted on its board by gdb:
+# a board has no operating system to return a status to, so the script stops the
+# image where it ends and exits with its status (freertos-coverage-tests/run_board_test.py).
+BOARD_RUN := gdb-multiarch;-q;-batch;-x;$(CURDIR)/freertos-coverage-tests/run_board_test.py;--args
+
 QEMU_posix-aarch32 := qemu-arm;-L;/usr/arm-linux-gnueabihf
-QEMU_cortex-m3     := qemu-system-arm;-M;mps2-an385;-display;none;-kernel
-QEMU_cortex-m4f    := qemu-system-arm;-M;mps2-an386;-display;none;-kernel
-QEMU_cortex-m7     := qemu-system-arm;-M;mps2-an500;-display;none;-kernel
-QEMU_cortex-m33    := qemu-system-arm;-M;mps2-an505;-display;none;-kernel
+QEMU_cortex-m3     := cmake;-E;env;QEMU_MACHINE=mps2-an385;$(BOARD_RUN)
+QEMU_cortex-m4f    := cmake;-E;env;QEMU_MACHINE=mps2-an386;$(BOARD_RUN)
+QEMU_cortex-m7     := cmake;-E;env;QEMU_MACHINE=mps2-an500;$(BOARD_RUN)
+QEMU_cortex-m33    := cmake;-E;env;QEMU_MACHINE=mps2-an505;$(BOARD_RUN)
 
 # Every platform is configured the same way, with the unit tests on and its QEMU
 # process as the emulator. A platform with no QEMU line above is an error.

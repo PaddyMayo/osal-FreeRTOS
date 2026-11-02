@@ -2,7 +2,8 @@
  * File: firmware-handlers.c
  *
  * Purpose:
- *   Default exception handlers for the test runners built as Cortex-M firmware.
+ *   What the test runners need to be Cortex-M firmware: default exception
+ *   handlers, and the point where a run ends.
  *
  *   The shared vector table (platforms/common/cortex_m_startup.c) names the
  *   FreeRTOS port's SVC, PendSV and SysTick handlers. In the product the port
@@ -10,6 +11,8 @@
  *   stand in, and the runners never start the scheduler or a timer, so none of
  *   the three can fire. The names follow the same rule as the vector table.
  */
+
+#include "firmware.h"
 
 #if defined(__ARM_ARCH_8M_BASE__) || defined(__ARM_ARCH_8M_MAIN__)
 #define FIRMWARE_SVC_HANDLER     SVC_Handler
@@ -42,6 +45,16 @@ void FIRMWARE_PENDSV_HANDLER(void)
 
 void FIRMWARE_SYSTICK_HANDLER(void)
 {
+    for (;;)
+    {
+    }
+}
+
+/* Not inlined, so the debugger has an address to stop at, with the status still in r0 */
+__attribute__((noinline)) void CoverageTestExit(int Status)
+{
+    (void)Status;
+
     for (;;)
     {
     }
