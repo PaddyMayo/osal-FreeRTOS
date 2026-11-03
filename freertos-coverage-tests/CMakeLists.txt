@@ -114,6 +114,7 @@ set(FREERTOS_MODULE_LIST
     common
     files
     filesys
+    heap
     queue
     tasks
 )
@@ -278,7 +279,6 @@ set(FREERTOS_STUB_MODULES
     errors
     file
     filesys
-    heap
     idmap
     module
     mutex
