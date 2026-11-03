@@ -16,6 +16,9 @@
 #ifndef OSAL_FREERTOS_TOTAL_HEAP_SIZE
 #error "OSAL_FREERTOS_TOTAL_HEAP_SIZE is not defined - set it in the -C config file"
 #endif
+#if OSAL_FREERTOS_HEAP != 4
+#error "Only FREERTOS_HEAP=4 is supported"
+#endif
 
 /* Scheduling */
 #define configUSE_PREEMPTION                    1

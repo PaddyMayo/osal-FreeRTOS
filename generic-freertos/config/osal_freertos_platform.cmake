@@ -85,6 +85,8 @@ function(osal_freertos_platform)
             list(APPEND definitions "OSAL_FREERTOS_${key}=${value}")
         endif ()
     endforeach ()
+    # FreeRTOSConfig.h rejects every heap but 4
+    list(APPEND definitions "OSAL_FREERTOS_HEAP=${FREERTOS_HEAP}")
     if (PLATFORM_HEADER)
         list(APPEND definitions "OSAL_FREERTOS_PORT_HEADER=\"${PLATFORM_HEADER}\"")
     endif ()

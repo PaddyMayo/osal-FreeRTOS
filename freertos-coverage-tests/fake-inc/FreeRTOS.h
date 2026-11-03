@@ -49,7 +49,24 @@ typedef struct
 void *OCS_pvPortMalloc(size_t xSize);
 void  OCS_vPortFree(void *pv);
 
-#define pvPortMalloc OCS_pvPortMalloc
-#define vPortFree    OCS_vPortFree
+/* The real layout; the members are used from other files (os-impl-heap.c, the heap test) */
+// cppcheck-suppress-begin unusedStructMember
+typedef struct xHeapStats
+{
+    size_t xAvailableHeapSpaceInBytes;
+    size_t xSizeOfLargestFreeBlockInBytes;
+    size_t xSizeOfSmallestFreeBlockInBytes;
+    size_t xNumberOfFreeBlocks;
+    size_t xMinimumEverFreeBytesRemaining;
+    size_t xNumberOfSuccessfulAllocations;
+    size_t xNumberOfSuccessfulFrees;
+} HeapStats_t;
+// cppcheck-suppress-end unusedStructMember
+
+void OCS_vPortGetHeapStats(HeapStats_t *pxHeapStats);
+
+#define pvPortMalloc      OCS_pvPortMalloc
+#define vPortFree         OCS_vPortFree
+#define vPortGetHeapStats OCS_vPortGetHeapStats
 
 #endif /* FREERTOS_H */
