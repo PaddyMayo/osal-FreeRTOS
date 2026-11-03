@@ -38,10 +38,22 @@ BaseType_t OCS_xSemaphoreTake(SemaphoreHandle_t xSemaphore, TickType_t xBlockTim
 
 BaseType_t OCS_xSemaphoreGive(SemaphoreHandle_t xSemaphore);
 
+SemaphoreHandle_t OCS_xSemaphoreCreateRecursiveMutex(void);
+
+void OCS_vSemaphoreDelete(SemaphoreHandle_t xSemaphore);
+
+BaseType_t OCS_xSemaphoreTakeRecursive(SemaphoreHandle_t xMutex, TickType_t xBlockTime);
+
+BaseType_t OCS_xSemaphoreGiveRecursive(SemaphoreHandle_t xMutex);
+
 #define xSemaphoreCreateBinaryStatic   OCS_xSemaphoreCreateBinaryStatic
 #define xSemaphoreCreateMutexStatic    OCS_xSemaphoreCreateMutexStatic
 #define xSemaphoreCreateCountingStatic OCS_xSemaphoreCreateCountingStatic
 #define xSemaphoreTake                 OCS_xSemaphoreTake
 #define xSemaphoreGive                 OCS_xSemaphoreGive
+#define xSemaphoreCreateRecursiveMutex OCS_xSemaphoreCreateRecursiveMutex
+#define vSemaphoreDelete               OCS_vSemaphoreDelete
+#define xSemaphoreTakeRecursive        OCS_xSemaphoreTakeRecursive
+#define xSemaphoreGiveRecursive        OCS_xSemaphoreGiveRecursive
 
 #endif /* SEMAPHORE_H */

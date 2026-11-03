@@ -115,6 +115,7 @@ set(FREERTOS_MODULE_LIST
     files
     filesys
     heap
+    mutex
     queue
     tasks
 )
@@ -281,7 +282,6 @@ set(FREERTOS_STUB_MODULES
     filesys
     idmap
     module
-    mutex
     network
     rwlock
     select
