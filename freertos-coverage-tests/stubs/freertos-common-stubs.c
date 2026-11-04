@@ -14,6 +14,7 @@
 #include "utstubs.h"
 
 #include "FreeRTOS.h"
+#include "task.h"
 #include "semphr.h"
 
 #include "osapi-error.h"
@@ -62,6 +63,39 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t xSemaphore)
     UT_DEFAULT_IMPL(xSemaphoreGive);
 
     return pdTRUE;
+}
+
+/*
+ * The task API the gate functions in os-impl-common.c use to list and wake the
+ * tasks blocked on a gated object, and to keep their lists consistent.
+ */
+TaskHandle_t UT_Stub_CommonCurrentTask = (TaskHandle_t)0x7000;
+TaskHandle_t UT_Stub_LastAbortedTask;
+
+TaskHandle_t xTaskGetCurrentTaskHandle(void)
+{
+    UT_DEFAULT_IMPL(xTaskGetCurrentTaskHandle);
+
+    return UT_Stub_CommonCurrentTask;
+}
+
+BaseType_t xTaskAbortDelay(TaskHandle_t xTask)
+{
+    UT_Stub_LastAbortedTask = xTask;
+
+    UT_DEFAULT_IMPL(xTaskAbortDelay);
+
+    return pdPASS;
+}
+
+void vTaskEnterCritical(void)
+{
+    UT_DEFAULT_IMPL(vTaskEnterCritical);
+}
+
+void vTaskExitCritical(void)
+{
+    UT_DEFAULT_IMPL(vTaskExitCritical);
 }
 
 /*

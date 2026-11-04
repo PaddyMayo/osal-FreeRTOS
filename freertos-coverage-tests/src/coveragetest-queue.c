@@ -61,56 +61,37 @@ extern void UT_Stub_ResetReceiveData(void);
 #define UT_QUEUE_MSG_SIZE 8
 
 #define UT_QUEUE_HANDLE ((QueueHandle_t)0x4242)
-#define UT_TASK_A       ((TaskHandle_t)0x7101)
-#define UT_TASK_B       ((TaskHandle_t)0x7102)
-#define UT_OTHER_TASK   ((TaskHandle_t)0x7103)
 
 /* Declared in freertos-queue-stubs.c */
-extern TaskHandle_t UT_Stub_QueueCurrentTask;
-extern TaskHandle_t UT_Stub_LastAbortedTask;
-extern TickType_t   UT_Stub_QueueLastDelayTicks;
+extern TickType_t                   UT_Stub_QueueLastDelayTicks;
+extern const OS_impl_gate_t        *UT_Stub_LastGate;
+extern OS_impl_gate_waiter_t       *UT_Stub_LastEnterWaiter;
+extern const OS_impl_gate_waiter_t *UT_Stub_LastLeaveWaiter;
 
-/* What the hooks below saw at the moment they were called */
-static uint32       UT_Seen_Users;
-static uint32       UT_Seen_UsersAtDelay;
-static uint32       UT_Seen_UsersAtFree;
-static TaskHandle_t UT_Seen_Waiter;
+/* Inside OS_FreeRTOS_GateWake(): the users left, as a delete sees them while the woken Gets leave one by one */
+static int32 UT_WakeCalls;
 
-/* Inside xQueueReceive(): the Get has registered, and another Get joins the list in front of it */
 static int32
-UT_ReceiveSeesRegistered(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+UT_WakeReportsUsersLeaving(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
 {
-    UT_Seen_Users  = UT_QueueTest_GetImplUsers(UT_INDEX_0);
-    UT_Seen_Waiter = UT_QueueTest_GetImplWaiterTask(UT_INDEX_0);
+    (void)UserObj;
+    (void)StubRetcode;
+    (void)CallCount;
+    (void)Context;
 
-    UT_QueueTest_PushWaiter(UT_INDEX_0, UT_OTHER_TASK);
-
-    return StubRetcode;
+    return 2 - UT_WakeCalls++;
 }
 
-/* Inside xQueueReceive(): the queue is deleted, so the blocked Get is woken without a message */
-static int32 UT_ReceiveWhileDeleted(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+/* Inside vQueueDelete(): how many times the delete had checked for users by then */
+static uint32 UT_WakeCallsAtFree;
+
+static int32 UT_FreeSeesWakes(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
 {
-    UT_QueueTest_SetImplQueueId(UT_INDEX_0, NULL);
+    (void)UserObj;
+    (void)CallCount;
+    (void)Context;
 
-    return -1;
-}
-
-/* Inside vTaskDelay(): the woken Gets run and leave */
-static int32
-UT_DelayReleasesWaiters(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
-{
-    UT_Seen_UsersAtDelay = UT_QueueTest_GetImplUsers(UT_INDEX_0);
-
-    UT_QueueTest_ReleaseWaiters(UT_INDEX_0);
-
-    return StubRetcode;
-}
-
-/* Inside vQueueDelete(): who is still using the queue that is being freed */
-static int32 UT_FreeSeesUsers(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
-{
-    UT_Seen_UsersAtFree = UT_QueueTest_GetImplUsers(UT_INDEX_0);
+    UT_WakeCallsAtFree = UT_GetStubCount(UT_KEY(OS_FreeRTOS_GateWake));
 
     return StubRetcode;
 }
@@ -135,12 +116,15 @@ void Test_OS_QueueCreate_Impl(void)
     UtAssert_UINT32_EQ(UT_Stub_LastCreateItemSize, UT_QUEUE_MSG_SIZE);
     UtAssert_True(UT_QueueTest_GetImplQueueId(UT_INDEX_0) == UT_Stub_CreatedQueueHandle,
                   "xQueueCreate() handle stored in impl table");
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateOpen, 1);
+    UtAssert_True(UT_Stub_LastGate == UT_QueueTest_GetImplGate(UT_INDEX_0), "this queue's gate opened");
 
     /* xQueueCreate() failure (e.g. out of heap) -> OS_ERROR, no handle kept */
     UT_SetDeferredRetcode(UT_KEY(xQueueCreate), 1, -1);
     UtAssert_INT32_EQ(OS_QueueCreate_Impl(&token, 0), OS_ERROR);
     UtAssert_STUB_COUNT(xQueueCreate, 2);
     UtAssert_True(UT_QueueTest_GetImplQueueId(UT_INDEX_0) == NULL, "no handle stored when xQueueCreate() fails");
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateOpen, 1);
 }
 
 void Test_OS_QueueDelete_Impl(void)
@@ -153,38 +137,35 @@ void Test_OS_QueueDelete_Impl(void)
     UtAssert_STUB_COUNT(vQueueDelete, 1);
     UtAssert_True(UT_Stub_LastDeletedQueue == (QueueHandle_t)0x4242, "vQueueDelete() called with queue handle");
 
-    /* nobody was using it -> nothing to wake, nothing to wait for, and the slot no longer holds the handle */
-    UtAssert_STUB_COUNT(xTaskAbortDelay, 0);
+    /* the gate was closed first, nobody was in it -> no waiting, and the slot no longer holds the handle */
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateClose, 1);
+    UtAssert_True(UT_Stub_LastGate == UT_QueueTest_GetImplGate(UT_INDEX_0), "this queue's gate closed");
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 1);
     UtAssert_STUB_COUNT(vTaskDelay, 0);
     UtAssert_True(UT_QueueTest_GetImplQueueId(UT_INDEX_0) == NULL, "queue handle cleared from impl table");
 }
 
-void Test_OS_QueueDelete_Impl_Waiters(void)
+void Test_OS_QueueDelete_Impl_Drain(void)
 {
     OS_object_token_t token = UT_QUEUE_TOKEN(0);
 
     UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
 
-    /* two tasks blocked in OS_QueueGet(); each delay lets them run and leave */
-    UT_QueueTest_PushWaiter(UT_INDEX_0, UT_TASK_A);
-    UT_QueueTest_PushWaiter(UT_INDEX_0, UT_TASK_B);
-    UT_SetHookFunction(UT_KEY(vTaskDelay), UT_DelayReleasesWaiters, NULL);
-    UT_SetHookFunction(UT_KEY(vQueueDelete), UT_FreeSeesUsers, NULL);
+    /* two users in the gate, which leave one after the other while the delete waits a tick for each */
+    UT_WakeCalls = 0;
+    UT_SetHookFunction(UT_KEY(OS_FreeRTOS_GateWake), UT_WakeReportsUsersLeaving, NULL);
+    UT_SetHookFunction(UT_KEY(vQueueDelete), UT_FreeSeesWakes, NULL);
 
     UtAssert_INT32_EQ(OS_QueueDelete_Impl(&token), OS_SUCCESS);
 
-    /* both were woken (the newest first, so TASK_A was the last), then it waited one tick for them */
-    UtAssert_STUB_COUNT(xTaskAbortDelay, 2);
-    UtAssert_True(UT_Stub_LastAbortedTask == UT_TASK_A, "every blocked Get was woken");
-    UtAssert_STUB_COUNT(vTaskDelay, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 3);
+    UtAssert_STUB_COUNT(vTaskDelay, 2);
     UtAssert_UINT32_EQ(UT_Stub_QueueLastDelayTicks, 1);
-    UtAssert_UINT32_EQ(UT_Seen_UsersAtDelay, 2);
 
-    /* the queue is freed only once nobody uses it any more */
+    /* the queue is freed only once the last user has left */
     UtAssert_STUB_COUNT(vQueueDelete, 1);
+    UtAssert_UINT32_EQ(UT_WakeCallsAtFree, 3);
     UtAssert_True(UT_Stub_LastDeletedQueue == UT_QUEUE_HANDLE, "vQueueDelete() called with queue handle");
-    UtAssert_UINT32_EQ(UT_Seen_UsersAtFree, 0);
-    UtAssert_True(UT_QueueTest_GetImplQueueId(UT_INDEX_0) == NULL, "queue handle cleared from impl table");
 }
 
 void Test_OS_QueueGet_Impl(void)
@@ -207,6 +188,7 @@ void Test_OS_QueueGet_Impl(void)
                       OS_QUEUE_INVALID_SIZE);
     UtAssert_UINT32_EQ(size_copied, 0);
     UtAssert_STUB_COUNT(xQueueReceive, 0);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateEnter, 0);
 
     /* OS_PEND -> waits forever, message copied out, max_size reported */
     UT_Stub_SetReceiveData(message, sizeof(message));
@@ -218,6 +200,11 @@ void Test_OS_QueueGet_Impl(void)
     UtAssert_True(UT_Stub_LastReceiveTicks == portMAX_DELAY, "OS_PEND maps to portMAX_DELAY");
     UtAssert_UINT32_EQ(size_copied, UT_QUEUE_MSG_SIZE);
     UtAssert_MemCmp(buffer, message, sizeof(message), "message copied to caller buffer");
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateEnter, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 1);
+    UtAssert_True(UT_Stub_LastGate == UT_QueueTest_GetImplGate(UT_INDEX_0), "this queue's gate entered");
+    UtAssert_True(UT_Stub_LastEnterWaiter != NULL, "a Get passes a waiter node");
+    UtAssert_True(UT_Stub_LastLeaveWaiter == UT_Stub_LastEnterWaiter, "and leaves with the same one");
 
     /* OS_CHECK -> polls with zero ticks */
     UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_CHECK), OS_SUCCESS);
@@ -254,6 +241,42 @@ void Test_OS_QueueGet_Impl(void)
     UtAssert_UINT32_EQ(size_copied, 0);
 }
 
+void Test_OS_QueueGet_Impl_Gate(void)
+{
+    OS_object_token_t token = UT_QUEUE_TOKEN(0);
+    unsigned char     message[UT_QUEUE_MSG_SIZE];
+    unsigned char     buffer[UT_QUEUE_MSG_SIZE];
+    size_t            size_copied;
+
+    memset(message, 0xA5, sizeof(message));
+
+    OS_queue_table[0].max_depth = UT_QUEUE_DEPTH;
+    OS_queue_table[0].max_size  = UT_QUEUE_MSG_SIZE;
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
+
+    /* the gate is closed (the queue is being deleted) -> refused before FreeRTOS is touched */
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_GateEnter), 1, -1);
+    size_copied = 99;
+    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_ERR_INVALID_ID);
+    UtAssert_UINT32_EQ(size_copied, 0);
+    UtAssert_STUB_COUNT(xQueueReceive, 0);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 0);
+
+    /* the delete woke this Get: the receive fails and the gate closed meanwhile -> OS_ERROR, not a timeout */
+    UT_SetDefaultReturnValue(UT_KEY(OS_FreeRTOS_GateLeave), 1);
+    UT_SetDeferredRetcode(UT_KEY(xQueueReceive), 1, -1);
+    size_copied = 99;
+    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_ERROR);
+    UtAssert_UINT32_EQ(size_copied, 0);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 1);
+
+    /* a message that arrived just before the delete is still delivered */
+    UT_Stub_SetReceiveData(message, sizeof(message));
+    size_copied = 0;
+    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_SUCCESS);
+    UtAssert_UINT32_EQ(size_copied, UT_QUEUE_MSG_SIZE);
+}
+
 void Test_OS_QueuePut_Impl(void)
 {
     OS_object_token_t token = UT_QUEUE_TOKEN(0);
@@ -275,6 +298,8 @@ void Test_OS_QueuePut_Impl(void)
     UtAssert_True(UT_Stub_LastSendQueue == (QueueHandle_t)0x6161, "xQueueSend() called with queue handle");
     UtAssert_True(UT_Stub_LastSendItem == message, "xQueueSend() called with caller's message");
     UtAssert_UINT32_EQ(UT_Stub_LastSendTicks, 0);
+    UtAssert_True(UT_Stub_LastGate == UT_QueueTest_GetImplGate(UT_INDEX_0), "this queue's gate entered");
+    UtAssert_True(UT_Stub_LastEnterWaiter == NULL, "a Put passes no waiter node");
 
     /* message larger than max_size -> accepted (FreeRTOS copies only max_size bytes of it) */
     UtAssert_INT32_EQ(OS_QueuePut_Impl(&token, message, sizeof(message), 0), OS_SUCCESS);
@@ -284,67 +309,13 @@ void Test_OS_QueuePut_Impl(void)
     UT_SetDeferredRetcode(UT_KEY(xQueueSend), 1, -1);
     UtAssert_INT32_EQ(OS_QueuePut_Impl(&token, message, UT_QUEUE_MSG_SIZE, 0), OS_QUEUE_FULL);
     UtAssert_STUB_COUNT(xQueueSend, 3);
+
+    /* every Put that got in also left, whatever its result */
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateEnter, 3);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 3);
 }
 
-void Test_OS_QueueGet_Impl_Registers(void)
-{
-    OS_object_token_t token = UT_QUEUE_TOKEN(0);
-    unsigned char     message[UT_QUEUE_MSG_SIZE];
-    unsigned char     buffer[UT_QUEUE_MSG_SIZE];
-    size_t            size_copied = 0;
-
-    memset(message, 0xA5, sizeof(message));
-
-    OS_queue_table[0].max_depth = UT_QUEUE_DEPTH;
-    OS_queue_table[0].max_size  = UT_QUEUE_MSG_SIZE;
-    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
-    UT_Stub_SetReceiveData(message, sizeof(message));
-    UT_SetHookFunction(UT_KEY(xQueueReceive), UT_ReceiveSeesRegistered, NULL);
-
-    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_SUCCESS);
-
-    /* while blocked, the Get counted as a user and was listed under the task that called it */
-    UtAssert_UINT32_EQ(UT_Seen_Users, 1);
-    UtAssert_True(UT_Seen_Waiter == UT_Stub_QueueCurrentTask, "blocked Get listed under its task");
-
-    /* it left the list from behind the Get that joined while it was blocked, and that one is untouched */
-    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 1);
-    UtAssert_True(UT_QueueTest_GetImplWaiterTask(UT_INDEX_0) == UT_OTHER_TASK, "other Get still listed");
-
-    UT_QueueTest_ReleaseWaiters(UT_INDEX_0);
-    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
-}
-
-void Test_OS_QueueGet_Impl_Deleted(void)
-{
-    OS_object_token_t token = UT_QUEUE_TOKEN(0);
-    unsigned char     buffer[UT_QUEUE_MSG_SIZE];
-    size_t            size_copied;
-
-    OS_queue_table[0].max_depth = UT_QUEUE_DEPTH;
-    OS_queue_table[0].max_size  = UT_QUEUE_MSG_SIZE;
-
-    /* the queue is already gone (a delete has started) -> refused before FreeRTOS is touched */
-    UT_QueueTest_SetImplQueueId(UT_INDEX_0, NULL);
-    size_copied = 99;
-    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_ERR_INVALID_ID);
-    UtAssert_UINT32_EQ(size_copied, 0);
-    UtAssert_STUB_COUNT(xQueueReceive, 0);
-    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
-    UtAssert_True(UT_QueueTest_GetImplWaiterTask(UT_INDEX_0) == NULL, "refused Get not listed");
-
-    /* deleted while blocked: the Get is woken without a message and reports that, not a timeout */
-    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
-    UT_SetHookFunction(UT_KEY(xQueueReceive), UT_ReceiveWhileDeleted, NULL);
-    size_copied = 99;
-    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_ERROR);
-    UtAssert_STUB_COUNT(xQueueReceive, 1);
-    UtAssert_UINT32_EQ(size_copied, 0);
-    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
-    UtAssert_True(UT_QueueTest_GetImplWaiterTask(UT_INDEX_0) == NULL, "woken Get no longer listed");
-}
-
-void Test_OS_QueuePut_Impl_Deleted(void)
+void Test_OS_QueuePut_Impl_Gate(void)
 {
     OS_object_token_t token = UT_QUEUE_TOKEN(0);
     unsigned char     message[UT_QUEUE_MSG_SIZE];
@@ -353,17 +324,13 @@ void Test_OS_QueuePut_Impl_Deleted(void)
 
     OS_queue_table[0].max_depth = UT_QUEUE_DEPTH;
     OS_queue_table[0].max_size  = UT_QUEUE_MSG_SIZE;
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
 
-    /* the queue is already gone (a delete has started) -> refused before FreeRTOS is touched */
-    UT_QueueTest_SetImplQueueId(UT_INDEX_0, NULL);
+    /* the gate is closed (the queue is being deleted) -> refused before FreeRTOS is touched */
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_GateEnter), 1, -1);
     UtAssert_INT32_EQ(OS_QueuePut_Impl(&token, message, UT_QUEUE_MSG_SIZE, 0), OS_ERR_INVALID_ID);
     UtAssert_STUB_COUNT(xQueueSend, 0);
-    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
-
-    /* a Put that finishes leaves no trace for a delete to wait on */
-    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
-    UtAssert_INT32_EQ(OS_QueuePut_Impl(&token, message, UT_QUEUE_MSG_SIZE, 0), OS_SUCCESS);
-    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 0);
 }
 
 void Test_OS_QueueGetInfo_Impl(void)
@@ -396,11 +363,10 @@ void UtTest_Setup(void)
 {
     ADD_TEST(OS_QueueCreate_Impl);
     ADD_TEST(OS_QueueDelete_Impl);
-    ADD_TEST(OS_QueueDelete_Impl_Waiters);
+    ADD_TEST(OS_QueueDelete_Impl_Drain);
     ADD_TEST(OS_QueueGet_Impl);
-    ADD_TEST(OS_QueueGet_Impl_Registers);
-    ADD_TEST(OS_QueueGet_Impl_Deleted);
+    ADD_TEST(OS_QueueGet_Impl_Gate);
     ADD_TEST(OS_QueuePut_Impl);
-    ADD_TEST(OS_QueuePut_Impl_Deleted);
+    ADD_TEST(OS_QueuePut_Impl_Gate);
     ADD_TEST(OS_QueueGetInfo_Impl);
 }
