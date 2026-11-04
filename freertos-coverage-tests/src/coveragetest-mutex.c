@@ -44,7 +44,8 @@ extern SemaphoreHandle_t          UT_Stub_LastTakeMutex;
 extern TickType_t                 UT_Stub_LastTakeMutexTicks;
 extern SemaphoreHandle_t          UT_Stub_LastGiveMutex;
 extern SemaphoreHandle_t          UT_Stub_LastHolderQueried;
-extern TaskHandle_t               UT_Stub_MutexHolder;
+extern void                       UT_Stub_SetMutexHolder(SemaphoreHandle_t handle, TaskHandle_t holder);
+extern void                       UT_Stub_ResetMutexHolders(void);
 extern TickType_t                 UT_Stub_MutexLastDelayTicks;
 extern const OS_impl_gate_t      *UT_Stub_LastGate;
 extern OS_impl_gate_user_t       *UT_Stub_LastEnterUser;
@@ -58,8 +59,10 @@ extern const OS_impl_gate_user_t *UT_Stub_LastLeaveUser;
 
 #define UT_INDEX_0 OSAL_INDEX_C(0)
 
-#define UT_MUTEX_HANDLE ((SemaphoreHandle_t)0x4242)
-#define UT_HOLDER_TASK  ((TaskHandle_t)0x7777)
+#define UT_MUTEX_HANDLE  ((SemaphoreHandle_t)0x4242)
+#define UT_HOLDER_TASK   ((TaskHandle_t)0x7777)
+#define UT_OTHER_TASK    ((TaskHandle_t)0x7778)
+#define UT_NO_MUTEX_TASK ((TaskHandle_t)0x7779)
 
 /* Inside OS_FreeRTOS_GateWake(): the users left, as a delete sees them while the Takes and Gives already in finish */
 static int32 UT_WakeCalls;
@@ -178,13 +181,66 @@ void Test_OS_MutSemDelete_Impl_Locked(void)
     UT_MutexTest_SetImplMutexId(UT_INDEX_0, UT_MUTEX_HANDLE);
 
     /* a task holds it -> refused, and nothing is touched: the gate stays open, the mutex is not freed */
-    UT_Stub_MutexHolder = UT_HOLDER_TASK;
+    UT_Stub_SetMutexHolder(UT_MUTEX_HANDLE, UT_HOLDER_TASK);
     UtAssert_INT32_EQ(OS_MutSemDelete_Impl(&token), OS_SEM_FAILURE);
     UtAssert_STUB_COUNT(xSemaphoreGetMutexHolder, 1);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateClose, 0);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 0);
     UtAssert_STUB_COUNT(vSemaphoreDelete, 0);
     UtAssert_True(UT_MutexTest_GetImplMutexId(UT_INDEX_0) == UT_MUTEX_HANDLE, "mutex handle kept");
+}
+
+void Test_OS_MutSemDelete_Impl_Orphaned(void)
+{
+    OS_object_token_t token = UT_MUTEX_TOKEN(0);
+
+    UT_MutexTest_SetImplMutexId(UT_INDEX_0, UT_MUTEX_HANDLE);
+
+    /* held by a task that is gone, and its gate was closed when it went -> freed like a free mutex */
+    UT_Stub_SetMutexHolder(UT_MUTEX_HANDLE, UT_HOLDER_TASK);
+    UT_SetDefaultReturnValue(UT_KEY(OS_FreeRTOS_GateIsClosed), 1);
+
+    UtAssert_INT32_EQ(OS_MutSemDelete_Impl(&token), OS_SUCCESS);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateClose, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 1);
+    UtAssert_STUB_COUNT(vSemaphoreDelete, 1);
+    UtAssert_True(UT_Stub_LastDeletedMutex == UT_MUTEX_HANDLE, "vSemaphoreDelete() called with mutex handle");
+    UtAssert_True(UT_MutexTest_GetImplMutexId(UT_INDEX_0) == NULL, "mutex handle cleared from impl table");
+}
+
+void Test_OS_MutexOwnerDied(void)
+{
+    SemaphoreHandle_t free_mutex  = (SemaphoreHandle_t)0x5001;
+    SemaphoreHandle_t dead_mutex  = (SemaphoreHandle_t)0x5002;
+    SemaphoreHandle_t other_mutex = (SemaphoreHandle_t)0x5003;
+
+    /* three mutexes exist; the fourth slot was never created and is skipped */
+    UT_MutexTest_SetImplMutexId(OSAL_INDEX_C(0), free_mutex);
+    UT_MutexTest_SetImplMutexId(OSAL_INDEX_C(1), dead_mutex);
+    UT_MutexTest_SetImplMutexId(OSAL_INDEX_C(2), other_mutex);
+    UT_Stub_SetMutexHolder(dead_mutex, UT_HOLDER_TASK);
+    UT_Stub_SetMutexHolder(other_mutex, UT_OTHER_TASK);
+
+    /* the Takes in the dead task's mutex leave one after the other while the call waits a tick for each */
+    UT_WakeCalls = 0;
+    UT_SetHookFunction(UT_KEY(OS_FreeRTOS_GateWake), UT_WakeReportsUsersLeaving, NULL);
+
+    OS_FreeRTOS_MutexOwnerDied(UT_HOLDER_TASK);
+
+    /* only the mutex that task held was closed, woken and waited on */
+    UtAssert_STUB_COUNT(xSemaphoreGetMutexHolder, 3);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateClose, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 3);
+    UtAssert_STUB_COUNT(vTaskDelay, 2);
+    UtAssert_UINT32_EQ(UT_Stub_MutexLastDelayTicks, 1);
+    UtAssert_True(UT_Stub_LastGate == UT_MutexTest_GetImplGate(OSAL_INDEX_C(1)),
+                  "the dead task's mutex was the one closed");
+
+    /* a task that holds none of them -> nothing is closed or waited on */
+    OS_FreeRTOS_MutexOwnerDied(UT_NO_MUTEX_TASK);
+    UtAssert_STUB_COUNT(xSemaphoreGetMutexHolder, 6);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateClose, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 3);
 }
 
 void Test_OS_MutSemGive_Impl(void)
@@ -248,6 +304,23 @@ void Test_OS_MutSemTake_Impl(void)
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 2);
 }
 
+void Test_OS_MutSemTake_Impl_Woken(void)
+{
+    OS_object_token_t token = UT_MUTEX_TOKEN(0);
+
+    UT_MutexTest_SetImplMutexId(UT_INDEX_0, UT_MUTEX_HANDLE);
+
+    /* the gate closed (the holder was deleted) and the blocked Take was woken without the mutex -> an error, nothing to
+     * hand back */
+    UT_SetDefaultReturnValue(UT_KEY(OS_FreeRTOS_GateIsClosed), 1);
+    UT_SetDeferredRetcode(UT_KEY(xSemaphoreTakeRecursive), 1, -1);
+
+    UtAssert_INT32_EQ(OS_MutSemTake_Impl(&token), OS_ERR_INVALID_ID);
+    UtAssert_STUB_COUNT(xSemaphoreTakeRecursive, 1);
+    UtAssert_STUB_COUNT(xSemaphoreGiveRecursive, 0);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 1);
+}
+
 void Test_OS_MutSemTake_Impl_Deleted(void)
 {
     OS_object_token_t token = UT_MUTEX_TOKEN(0);
@@ -283,7 +356,7 @@ void Osapi_Test_Setup(void)
 {
     UT_ResetState(0);
     memset(UT_Ref_OS_impl_mutex_table, 0, UT_Ref_OS_impl_mutex_table_SIZE);
-    UT_Stub_MutexHolder = NULL;
+    UT_Stub_ResetMutexHolders();
 }
 
 void Osapi_Test_Teardown(void)
@@ -298,8 +371,11 @@ void UtTest_Setup(void)
     ADD_TEST(OS_MutSemDelete_Impl);
     ADD_TEST(OS_MutSemDelete_Impl_Drain);
     ADD_TEST(OS_MutSemDelete_Impl_Locked);
+    ADD_TEST(OS_MutSemDelete_Impl_Orphaned);
+    ADD_TEST(OS_MutexOwnerDied);
     ADD_TEST(OS_MutSemGive_Impl);
     ADD_TEST(OS_MutSemTake_Impl);
+    ADD_TEST(OS_MutSemTake_Impl_Woken);
     ADD_TEST(OS_MutSemTake_Impl_Deleted);
     ADD_TEST(OS_MutSemGetInfo_Impl);
 }

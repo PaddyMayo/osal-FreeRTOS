@@ -16,12 +16,17 @@
  *
  *          Take and Give reach the mutex without raising the refcount that
  *          OS_MutSemDelete() waits on, so they pass through the mutex's gate
- *          (see os-freertos.h). Delete refuses a locked mutex, as POSIX does:
- *          FreeRTOS counts the mutexes each task holds, and freeing one that
- *          is held leaves that count, and any priority the holder inherited,
- *          stuck. A mutex that is not locked has no blocked Takes to wake, so
- *          Delete only closes the gate and waits for the Takes and Gives that
- *          are already in.
+ *          (see os-freertos.h). Delete refuses a mutex that a live task holds,
+ *          as POSIX does: FreeRTOS counts the mutexes each task holds, and
+ *          freeing one that is held leaves that count, and any priority the
+ *          holder inherited, stuck. A mutex that is not locked has no blocked
+ *          Takes to wake, so Delete only closes the gate and waits for the
+ *          Takes and Gives that are already in.
+ *
+ *          A task deleted while it holds a mutex cannot give it back (only the
+ *          holder can), so OS_FreeRTOS_MutexOwnerDied() orphans it: the gate is
+ *          closed, the Takes blocked on it are woken with an error, and Delete,
+ *          which finds it held but closed, frees it.
  */
 
 #include "FreeRTOS.h"
@@ -69,22 +74,26 @@ int32 OS_MutSemDelete_Impl(const OS_object_token_t *token)
 {
     OS_impl_mutex_internal_record_t *impl;
     TaskHandle_t                     holder;
+    bool                             refuse;
 
     impl = OS_OBJECT_TABLE_GET(OS_impl_mutex_table, *token);
 
     /*
      * Look at the holder and close the gate in one step: nobody can take the
-     * mutex between the two, so a mutex found free stays free.
+     * mutex between the two, so a mutex found free stays free. A mutex that is
+     * held while its gate is closed is orphaned (its holder was deleted), and
+     * nothing is left to protect, so it is freed like a free one.
      */
     taskENTER_CRITICAL();
     holder = xSemaphoreGetMutexHolder(impl->id);
-    if (holder == NULL)
+    refuse = (holder != NULL) && !OS_FreeRTOS_GateIsClosed(&impl->gate);
+    if (!refuse)
     {
         OS_FreeRTOS_GateClose(&impl->gate);
     }
     taskEXIT_CRITICAL();
 
-    if (holder != NULL)
+    if (refuse)
     {
         return OS_SEM_FAILURE;
     }
@@ -156,7 +165,18 @@ int32 OS_MutSemTake_Impl(const OS_object_token_t *token)
 
     if (xSemaphoreTakeRecursive(impl->id, portMAX_DELAY) != pdTRUE)
     {
-        status = OS_SEM_FAILURE;
+        /*
+         * A wait without a timeout only fails when it is woken: the gate was
+         * closed, because the mutex is being deleted or its holder was.
+         */
+        if (OS_FreeRTOS_GateIsClosed(&impl->gate))
+        {
+            status = OS_ERR_INVALID_ID;
+        }
+        else
+        {
+            status = OS_SEM_FAILURE;
+        }
     }
     else if (OS_FreeRTOS_GateIsClosed(&impl->gate))
     {
@@ -177,6 +197,52 @@ int32 OS_MutSemTake_Impl(const OS_object_token_t *token)
     (void)OS_FreeRTOS_GateLeave(&impl->gate, &user);
 
     return status;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Orphans the mutexes a task about to be deleted holds. See
+ *           prototype in os-freertos.h.
+ *
+ *           The task is suspended (or is the caller), so the set of mutexes
+ *           it holds cannot change meanwhile. The gates are closed in one
+ *           critical section; each is then woken and waited on until nobody
+ *           is in. That has to finish before the task is deleted: a Take woken
+ *           from a mutex runs the kernel's priority disinheritance on the
+ *           holder's TCB, and once the task is deleted the TCB may be reused.
+ *           Which mutexes to wait on is remembered, not looked up again: a
+ *           delete running at the same time may already have freed one.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task)
+{
+    bool   orphaned[OS_MAX_MUTEXES];
+    uint32 i;
+
+    taskENTER_CRITICAL();
+    for (i = 0; i < OS_MAX_MUTEXES; ++i)
+    {
+        orphaned[i] =
+            (OS_impl_mutex_table[i].id != NULL) && (xSemaphoreGetMutexHolder(OS_impl_mutex_table[i].id) == task);
+
+        if (orphaned[i])
+        {
+            OS_FreeRTOS_GateClose(&OS_impl_mutex_table[i].gate);
+        }
+    }
+    taskEXIT_CRITICAL();
+
+    for (i = 0; i < OS_MAX_MUTEXES; ++i)
+    {
+        if (orphaned[i])
+        {
+            while (OS_FreeRTOS_GateWake(&OS_impl_mutex_table[i].gate) > 0)
+            {
+                vTaskDelay(1);
+            }
+        }
+    }
 }
 
 /*----------------------------------------------------------------
