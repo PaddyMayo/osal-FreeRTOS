@@ -16,11 +16,16 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+#include "os-freertos.h"
+
 /* Opaque handle to OS_impl_mutex_table, for resetting it between test cases */
 extern void *const  UT_Ref_OS_impl_mutex_table;
 extern size_t const UT_Ref_OS_impl_mutex_table_SIZE;
 
 void              UT_MutexTest_SetImplMutexId(osal_index_t local_id, SemaphoreHandle_t MutexId);
 SemaphoreHandle_t UT_MutexTest_GetImplMutexId(osal_index_t local_id);
+
+/* The gate of a mutex, for checking that the right one was entered, left, opened or closed */
+OS_impl_gate_t *UT_MutexTest_GetImplGate(osal_index_t local_id);
 
 #endif /* UT_ADAPTOR_MUTEX_H */

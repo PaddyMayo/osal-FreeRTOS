@@ -25,3 +25,8 @@ SemaphoreHandle_t UT_MutexTest_GetImplMutexId(osal_index_t local_id)
 {
     return OS_impl_mutex_table[local_id].id;
 }
+
+OS_impl_gate_t *UT_MutexTest_GetImplGate(osal_index_t local_id)
+{
+    return &OS_impl_mutex_table[local_id].gate;
+}
