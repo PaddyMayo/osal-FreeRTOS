@@ -128,4 +128,15 @@ int32 OS_FreeRTOS_FileSysInit(void);
  */
 TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
 
+/*
+ * Defined in os-impl-mutex.c. Called for a task about to be deleted, before it
+ * is, for the mutexes it holds: it cannot give them back (only the holder can),
+ * so each is orphaned. The gate is closed, the Takes blocked on it are woken
+ * with an error, and the call returns once none is left in, so that nothing
+ * touches the holder when it goes. OS_MutSemDelete() then frees an orphaned
+ * mutex, which it otherwise refuses while a task holds it. Blocks, so it is not
+ * for interrupt context.
+ */
+void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task);
+
 #endif /* OS_FREERTOS_H */

@@ -318,6 +318,9 @@ static void OS_FreeRTOS_DeleteHandedOver(void *pvParameter1, uint32_t ulParamete
  *-----------------------------------------------------------------*/
 static void OS_FreeRTOS_DeleteSelf(void)
 {
+    /* It cannot give its mutexes back once it is gone: orphan the ones it still holds */
+    OS_FreeRTOS_MutexOwnerDied(xTaskGetCurrentTaskHandle());
+
     if (xTimerPendFunctionCall(OS_FreeRTOS_DeleteHandedOver, xTaskGetCurrentTaskHandle(), 0, 0) == pdTRUE)
     {
 #if defined(OSAL_FREERTOS_PORT_POSIX)
@@ -388,9 +391,13 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
          * Freeze it first, so it cannot run on and enter a gate again, then drop the
          * gate users it leaves behind: a task deleted in the middle of a queue Get or
          * a mutex Take never leaves, and its nodes live on a stack that is about to go.
+         * It cannot give back the mutexes it holds either, so those are orphaned, which
+         * wakes whoever waits on them; that must finish before the task, and its TCB,
+         * go.
          */
         vTaskSuspend(handle);
         OS_FreeRTOS_GateReleaseTask(handle);
+        OS_FreeRTOS_MutexOwnerDied(handle);
         vTaskDelete(handle);
     }
 

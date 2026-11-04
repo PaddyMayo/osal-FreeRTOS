@@ -29,9 +29,40 @@ TickType_t        UT_Stub_LastTakeMutexTicks;
 
 SemaphoreHandle_t UT_Stub_LastGiveMutex;
 
-/* The task holding the mutex, as xSemaphoreGetMutexHolder() reports it; NULL is a free mutex */
+/* The task holding each mutex, as xSemaphoreGetMutexHolder() reports it; a mutex not listed is free */
+#define UT_STUB_MAX_HOLDERS 4
+
 SemaphoreHandle_t UT_Stub_LastHolderQueried;
-TaskHandle_t      UT_Stub_MutexHolder;
+
+static SemaphoreHandle_t UT_Stub_HolderHandles[UT_STUB_MAX_HOLDERS];
+static TaskHandle_t      UT_Stub_HolderTasks[UT_STUB_MAX_HOLDERS];
+
+void UT_Stub_SetMutexHolder(SemaphoreHandle_t handle, TaskHandle_t holder)
+{
+    uint32 i;
+
+    for (i = 0; i < UT_STUB_MAX_HOLDERS - 1; ++i)
+    {
+        if (UT_Stub_HolderHandles[i] == handle || UT_Stub_HolderHandles[i] == NULL)
+        {
+            break;
+        }
+    }
+
+    UT_Stub_HolderHandles[i] = handle;
+    UT_Stub_HolderTasks[i]   = holder;
+}
+
+void UT_Stub_ResetMutexHolders(void)
+{
+    uint32 i;
+
+    for (i = 0; i < UT_STUB_MAX_HOLDERS; ++i)
+    {
+        UT_Stub_HolderHandles[i] = NULL;
+        UT_Stub_HolderTasks[i]   = NULL;
+    }
+}
 
 SemaphoreHandle_t xSemaphoreCreateRecursiveMutex(void)
 {
@@ -89,11 +120,21 @@ BaseType_t xSemaphoreGiveRecursive(SemaphoreHandle_t xMutex)
 
 TaskHandle_t xSemaphoreGetMutexHolder(SemaphoreHandle_t xSemaphore)
 {
+    uint32 i;
+
     UT_Stub_LastHolderQueried = xSemaphore;
 
     UT_DEFAULT_IMPL(xSemaphoreGetMutexHolder);
 
-    return UT_Stub_MutexHolder;
+    for (i = 0; i < UT_STUB_MAX_HOLDERS; ++i)
+    {
+        if (UT_Stub_HolderHandles[i] == xSemaphore)
+        {
+            return UT_Stub_HolderTasks[i];
+        }
+    }
+
+    return NULL;
 }
 
 /*

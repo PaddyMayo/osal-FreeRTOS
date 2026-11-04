@@ -246,10 +246,13 @@ void Test_OS_TaskDetach_Impl(void)
 
 /* Declared in freertos-tasks-stubs.c */
 extern TaskHandle_t UT_Stub_LastReleasedTask;
+extern TaskHandle_t UT_Stub_LastOwnerDiedTask;
+extern uint32       UT_Stub_OwnerDiedCountAtPend;
 
 /* Inside vTaskDelete(): how far the delete of another task had got, to check the order */
 static uint32 UT_SuspendsAtDelete;
 static uint32 UT_ReleasesAtDelete;
+static uint32 UT_OwnerDiedAtDelete;
 
 static int32 UT_DeleteSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
 {
@@ -257,8 +260,9 @@ static int32 UT_DeleteSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCou
     (void)CallCount;
     (void)Context;
 
-    UT_SuspendsAtDelete = UT_GetStubCount(UT_KEY(vTaskSuspend));
-    UT_ReleasesAtDelete = UT_GetStubCount(UT_KEY(OS_FreeRTOS_GateReleaseTask));
+    UT_SuspendsAtDelete  = UT_GetStubCount(UT_KEY(vTaskSuspend));
+    UT_ReleasesAtDelete  = UT_GetStubCount(UT_KEY(OS_FreeRTOS_GateReleaseTask));
+    UT_OwnerDiedAtDelete = UT_GetStubCount(UT_KEY(OS_FreeRTOS_MutexOwnerDied));
 
     return StubRetcode;
 }
@@ -277,6 +281,8 @@ void Test_OS_TaskDelete_Impl(void)
     UtAssert_True(UT_Stub_LastReleasedTask == (TaskHandle_t)0x4242, "its gate users are dropped");
     UtAssert_UINT32_EQ(UT_SuspendsAtDelete, 1);
     UtAssert_UINT32_EQ(UT_ReleasesAtDelete, 1);
+    UtAssert_True(UT_Stub_LastOwnerDiedTask == (TaskHandle_t)0x4242, "the mutexes it holds are orphaned");
+    UtAssert_UINT32_EQ(UT_OwnerDiedAtDelete, 1);
     UtAssert_True(UT_Stub_LastDeletedHandle == (TaskHandle_t)0x4242, "vTaskDelete() called with task handle");
     UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
     UtAssert_STUB_COUNT(vPortFree, 0);
@@ -301,6 +307,9 @@ void Test_OS_TaskDelete_Impl(void)
     UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
     UtAssert_STUB_COUNT(vTaskSuspend, 2);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateReleaseTask, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 2);
+    UtAssert_True(UT_Stub_LastOwnerDiedTask == UT_Stub_CurrentTaskHandle, "the calling task orphans its own mutexes");
+    UtAssert_UINT32_EQ(UT_Stub_OwnerDiedCountAtPend, 2);
     UtAssert_NULL(UT_Stub_LastSuspendedHandle);
     UtAssert_NULL(UT_Stub_LastDeletedHandle);
 
@@ -370,6 +379,9 @@ void Test_OS_TaskExit_Impl(void)
 
     OS_TaskExit_Impl();
 
+    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 1);
+    UtAssert_True(UT_Stub_LastOwnerDiedTask == UT_Stub_CurrentTaskHandle, "the calling task orphans its own mutexes");
+    UtAssert_UINT32_EQ(UT_Stub_OwnerDiedCountAtPend, 1);
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
     UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
     UtAssert_STUB_COUNT(vTaskSuspend, 1);
@@ -385,6 +397,7 @@ void Test_OS_TaskExit_Impl(void)
     UT_Stub_LastDeletedHandle = (TaskHandle_t)0x1;
     OS_TaskExit_Impl();
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 2);
     UtAssert_STUB_COUNT(vTaskSuspend, 1);
     UtAssert_NULL(UT_Stub_LastDeletedHandle);
 }
