@@ -16,11 +16,13 @@
  */
 
 #include "FreeRTOS.h"
+#include "task.h"
 #include "semphr.h"
 
 #include "os-shared-common.h"
 #include "os-shared-idmap.h"
 
+#include "os-freertos.h"
 #include "os-impl-tasks.h"
 #include "os-impl-files.h"
 #include "os-impl-filesys.h"
@@ -88,4 +90,135 @@ void OS_IdleLoop_Impl(void)
 void OS_ApplicationShutdown_Impl(void)
 {
     (void)xSemaphoreGive(OS_FreeRTOS_IdleSem);
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Counts a caller among the users of a gated object. See
+ *           prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_waiter_t *waiter)
+{
+    bool admitted;
+
+    taskENTER_CRITICAL();
+    admitted = !gate->closed;
+    if (admitted)
+    {
+        ++gate->users;
+
+        if (waiter != NULL)
+        {
+            waiter->task  = xTaskGetCurrentTaskHandle();
+            waiter->next  = gate->waiters;
+            gate->waiters = waiter;
+        }
+    }
+    taskEXIT_CRITICAL();
+
+    return admitted;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Undoes OS_FreeRTOS_GateEnter(). See prototype in
+ *           os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+bool OS_FreeRTOS_GateLeave(OS_impl_gate_t *gate, const OS_impl_gate_waiter_t *waiter)
+{
+    bool closed;
+
+    taskENTER_CRITICAL();
+    if (waiter != NULL)
+    {
+        /* The list is singly linked: find the slot that points at the node, so the head needs no special case */
+        OS_impl_gate_waiter_t **link = &gate->waiters;
+
+        while (*link != waiter)
+        {
+            link = &(*link)->next;
+        }
+
+        *link = waiter->next;
+    }
+
+    --gate->users;
+    closed = gate->closed;
+    taskEXIT_CRITICAL();
+
+    return closed;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_GateOpen(OS_impl_gate_t *gate)
+{
+    taskENTER_CRITICAL();
+    gate->closed = false;
+    taskEXIT_CRITICAL();
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_GateClose(OS_impl_gate_t *gate)
+{
+    taskENTER_CRITICAL();
+    gate->closed = true;
+    taskEXIT_CRITICAL();
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+bool OS_FreeRTOS_GateIsClosed(const OS_impl_gate_t *gate)
+{
+    bool closed;
+
+    taskENTER_CRITICAL();
+    closed = gate->closed;
+    taskEXIT_CRITICAL();
+
+    return closed;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Wakes the tasks blocked on a gated object. xTaskAbortDelay()
+ *           only unblocks a task, it never blocks, so it is safe inside the
+ *           critical section that keeps the waiter nodes (which live on
+ *           those tasks' stacks) from vanishing. See prototype in
+ *           os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate)
+{
+    const OS_impl_gate_waiter_t *waiter;
+    uint32                       users;
+
+    taskENTER_CRITICAL();
+    for (waiter = gate->waiters; waiter != NULL; waiter = waiter->next)
+    {
+        (void)xTaskAbortDelay(waiter->task);
+    }
+
+    users = gate->users;
+    taskEXIT_CRITICAL();
+
+    return users;
 }
