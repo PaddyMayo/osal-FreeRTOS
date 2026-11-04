@@ -384,6 +384,13 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
     }
     else
     {
+        /*
+         * Freeze it first, so it cannot run on and enter a gate again, then drop the
+         * gate users it leaves behind: a task deleted in the middle of a queue Get or
+         * a mutex Take never leaves, and its nodes live on a stack that is about to go.
+         */
+        vTaskSuspend(handle);
+        OS_FreeRTOS_GateReleaseTask(handle);
         vTaskDelete(handle);
     }
 

@@ -38,6 +38,7 @@
 #include "os-shared-idmap.h"
 
 #include "ut-adaptor-tasks.h"
+#include "os-freertos.h"
 
 /* Captured stub call arguments, declared in freertos-task-stubs.c */
 extern TaskHandle_t           UT_Stub_CurrentTaskHandle;
@@ -243,14 +244,39 @@ void Test_OS_TaskDetach_Impl(void)
     UtAssert_INT32_EQ(OS_TaskDetach_Impl(&token), OS_SUCCESS);
 }
 
+/* Declared in freertos-tasks-stubs.c */
+extern TaskHandle_t UT_Stub_LastReleasedTask;
+
+/* Inside vTaskDelete(): how far the delete of another task had got, to check the order */
+static uint32 UT_SuspendsAtDelete;
+static uint32 UT_ReleasesAtDelete;
+
+static int32 UT_DeleteSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+{
+    (void)UserObj;
+    (void)CallCount;
+    (void)Context;
+
+    UT_SuspendsAtDelete = UT_GetStubCount(UT_KEY(vTaskSuspend));
+    UT_ReleasesAtDelete = UT_GetStubCount(UT_KEY(OS_FreeRTOS_GateReleaseTask));
+
+    return StubRetcode;
+}
+
 void Test_OS_TaskDelete_Impl(void)
 {
     OS_object_token_t token = UT_TASK_TOKEN(0);
 
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
 
-    /* another task: the kernel frees it right away; the stack still goes through the portCLEAN_UP_TCB hook, not here */
+    /* another task: it is frozen, its gate users are dropped, and only then does the kernel free it right away;
+     * the stack still goes through the portCLEAN_UP_TCB hook, not here */
+    UT_SetHookFunction(UT_KEY(vTaskDelete), UT_DeleteSeesOrder, NULL);
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
+    UtAssert_True(UT_Stub_LastSuspendedHandle == (TaskHandle_t)0x4242, "the task is suspended first");
+    UtAssert_True(UT_Stub_LastReleasedTask == (TaskHandle_t)0x4242, "its gate users are dropped");
+    UtAssert_UINT32_EQ(UT_SuspendsAtDelete, 1);
+    UtAssert_UINT32_EQ(UT_ReleasesAtDelete, 1);
     UtAssert_True(UT_Stub_LastDeletedHandle == (TaskHandle_t)0x4242, "vTaskDelete() called with task handle");
     UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
     UtAssert_STUB_COUNT(vPortFree, 0);
@@ -273,7 +299,8 @@ void Test_OS_TaskDelete_Impl(void)
      * stub returns from the suspend, so the delete of itself that follows is seen as well */
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
     UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
-    UtAssert_STUB_COUNT(vTaskSuspend, 1);
+    UtAssert_STUB_COUNT(vTaskSuspend, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_GateReleaseTask, 1);
     UtAssert_NULL(UT_Stub_LastSuspendedHandle);
     UtAssert_NULL(UT_Stub_LastDeletedHandle);
 

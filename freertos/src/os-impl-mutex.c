@@ -114,17 +114,18 @@ int32 OS_MutSemDelete_Impl(const OS_object_token_t *token)
 int32 OS_MutSemGive_Impl(const OS_object_token_t *token)
 {
     OS_impl_mutex_internal_record_t *impl;
+    OS_impl_gate_user_t              user;
     BaseType_t                       given;
 
     impl = OS_OBJECT_TABLE_GET(OS_impl_mutex_table, *token);
 
-    if (!OS_FreeRTOS_GateEnter(&impl->gate, NULL))
+    if (!OS_FreeRTOS_GateEnter(&impl->gate, &user))
     {
         return OS_ERR_INVALID_ID;
     }
 
     given = xSemaphoreGiveRecursive(impl->id);
-    (void)OS_FreeRTOS_GateLeave(&impl->gate, NULL);
+    (void)OS_FreeRTOS_GateLeave(&impl->gate, &user);
 
     if (given != pdTRUE)
     {
@@ -143,11 +144,12 @@ int32 OS_MutSemGive_Impl(const OS_object_token_t *token)
 int32 OS_MutSemTake_Impl(const OS_object_token_t *token)
 {
     OS_impl_mutex_internal_record_t *impl;
+    OS_impl_gate_user_t              user;
     int32                            status;
 
     impl = OS_OBJECT_TABLE_GET(OS_impl_mutex_table, *token);
 
-    if (!OS_FreeRTOS_GateEnter(&impl->gate, NULL))
+    if (!OS_FreeRTOS_GateEnter(&impl->gate, &user))
     {
         return OS_ERR_INVALID_ID;
     }
@@ -172,7 +174,7 @@ int32 OS_MutSemTake_Impl(const OS_object_token_t *token)
         status = OS_SUCCESS;
     }
 
-    (void)OS_FreeRTOS_GateLeave(&impl->gate, NULL);
+    (void)OS_FreeRTOS_GateLeave(&impl->gate, &user);
 
     return status;
 }

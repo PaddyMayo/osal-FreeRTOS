@@ -89,14 +89,17 @@ void OS_ApplicationShutdown_Impl(void)
     (void)xSemaphoreGive(OS_FreeRTOS_IdleSem);
 }
 
+/* Every call in progress on a gated object, newest first; see os-freertos.h */
+static OS_impl_gate_user_t *OS_FreeRTOS_GateUsers;
+
 /*----------------------------------------------------------------
  *
  *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           Counts a caller among the users of a gated object. See
+ *           Lists a caller among the users of a gated object. See
  *           prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
-bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_waiter_t *waiter)
+bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_user_t *user)
 {
     bool admitted;
 
@@ -104,14 +107,10 @@ bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_waiter_t *waiter)
     admitted = !gate->closed;
     if (admitted)
     {
-        ++gate->users;
-
-        if (waiter != NULL)
-        {
-            waiter->task  = xTaskGetCurrentTaskHandle();
-            waiter->next  = gate->waiters;
-            gate->waiters = waiter;
-        }
+        user->task            = xTaskGetCurrentTaskHandle();
+        user->gate            = gate;
+        user->next            = OS_FreeRTOS_GateUsers;
+        OS_FreeRTOS_GateUsers = user;
     }
     taskEXIT_CRITICAL();
 
@@ -125,25 +124,23 @@ bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_waiter_t *waiter)
  *           os-freertos.h.
  *
  *-----------------------------------------------------------------*/
-bool OS_FreeRTOS_GateLeave(OS_impl_gate_t *gate, const OS_impl_gate_waiter_t *waiter)
+bool OS_FreeRTOS_GateLeave(const OS_impl_gate_t *gate, const OS_impl_gate_user_t *user)
 {
     bool closed;
 
     taskENTER_CRITICAL();
-    if (waiter != NULL)
     {
         /* The list is singly linked: find the slot that points at the node, so the head needs no special case */
-        OS_impl_gate_waiter_t **link = &gate->waiters;
+        OS_impl_gate_user_t **link = &OS_FreeRTOS_GateUsers;
 
-        while (*link != waiter)
+        while (*link != user)
         {
             link = &(*link)->next;
         }
 
-        *link = waiter->next;
+        *link = user->next;
     }
 
-    --gate->users;
     closed = gate->closed;
     taskEXIT_CRITICAL();
 
@@ -198,24 +195,55 @@ bool OS_FreeRTOS_GateIsClosed(const OS_impl_gate_t *gate)
  *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Wakes the tasks blocked on a gated object. xTaskAbortDelay()
  *           only unblocks a task, it never blocks, so it is safe inside the
- *           critical section that keeps the waiter nodes (which live on
- *           those tasks' stacks) from vanishing. See prototype in
- *           os-freertos.h.
+ *           critical section that keeps the nodes (which live on those
+ *           tasks' stacks) from vanishing; it does nothing to a task that
+ *           is not blocked. See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
 uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate)
 {
-    const OS_impl_gate_waiter_t *waiter;
-    uint32                       users;
+    const OS_impl_gate_user_t *user;
+    uint32                     users;
+
+    users = 0;
 
     taskENTER_CRITICAL();
-    for (waiter = gate->waiters; waiter != NULL; waiter = waiter->next)
+    for (user = OS_FreeRTOS_GateUsers; user != NULL; user = user->next)
     {
-        (void)xTaskAbortDelay(waiter->task);
+        if (user->gate == gate)
+        {
+            (void)xTaskAbortDelay(user->task);
+            ++users;
+        }
     }
-
-    users = gate->users;
     taskEXIT_CRITICAL();
 
     return users;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Drops the nodes of a deleted task. See prototype in
+ *           os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task)
+{
+    OS_impl_gate_user_t **link;
+
+    taskENTER_CRITICAL();
+    link = &OS_FreeRTOS_GateUsers;
+    while (*link != NULL)
+    {
+        if ((*link)->task == task)
+        {
+            *link = (*link)->next;
+        }
+        else
+        {
+            link = &(*link)->next;
+        }
+    }
+    taskEXIT_CRITICAL();
 }

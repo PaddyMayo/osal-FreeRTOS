@@ -94,6 +94,20 @@ void vTaskDelete(TaskHandle_t xTaskToDelete)
     UT_DEFAULT_IMPL(vTaskDelete);
 }
 
+/*
+ * os-impl-tasks.c drops a deleted task's gate users through this; the gate lives
+ * in os-impl-common.c and is covered there, and this runner links only the
+ * tasks module.
+ */
+TaskHandle_t UT_Stub_LastReleasedTask;
+
+void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task)
+{
+    UT_Stub_LastReleasedTask = task;
+
+    UT_DEFAULT_IMPL(OS_FreeRTOS_GateReleaseTask);
+}
+
 void vTaskSuspend(TaskHandle_t xTaskToSuspend)
 {
     UT_Stub_LastSuspendedHandle = xTaskToSuspend;
