@@ -23,9 +23,6 @@
 #include "os-shared-common.h"
 #include "os-shared-idmap.h"
 
-#include "os-impl-tasks.h"
-#include "os-impl-files.h"
-#include "os-impl-filesys.h"
 #include "os-freertos.h"
 
 #define UT_TASK_1 ((TaskHandle_t)0x7001)

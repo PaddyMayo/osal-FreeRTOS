@@ -16,6 +16,7 @@
 #include "os-shared-file.h"
 #include "os-shared-idmap.h"
 
+#include "os-freertos.h"
 #include "os-impl-files.h"
 
 OS_impl_file_internal_record_t OS_impl_filehandle_table[OS_MAX_NUM_OPEN_FILES];

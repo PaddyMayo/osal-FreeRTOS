@@ -4,7 +4,8 @@
  * Purpose:
  *   Declarations shared by the modules of the FreeRTOS OSAL port that are not
  *   part of any OSAL contract (os-shared-*.h), the way os-posix.h, os-vxworks.h
- *   and os-rtems.h do for their ports. The definitions are in os-impl-common.c.
+ *   and os-rtems.h do for their ports. The gate is defined in os-impl-common.c;
+ *   every other declaration names the module that defines it.
  *
  *   The gate
  *   --------
@@ -86,5 +87,35 @@ bool OS_FreeRTOS_GateIsClosed(const OS_impl_gate_t *gate);
  * calls: a user that has entered but not yet blocked is woken by a later call.
  */
 uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate);
+
+/*
+ * The init hooks OS_API_Impl_Init() in os-impl-common.c calls, each defined by
+ * the module that owns the state it sets up (os-posix.h lists its
+ * OS_Posix_*API_Impl_Init the same way).
+ */
+
+/* Defined in os-impl-tasks.c. Creates the semaphore that counts free TCB pool entries. */
+int32 OS_FreeRTOS_TaskInit(void);
+
+/* Defined in os-impl-files.c. Clears the file handle table. Returns OS_SUCCESS. */
+int32 OS_FreeRTOS_FileInit(void);
+
+/*
+ * Defined in os-impl-filesys.c. Creates the lock that serializes every call
+ * into the one littlefs instance, then mounts the BSP's storage into it,
+ * formatting the device first if it holds no file system. Returns OS_SUCCESS,
+ * or OS_ERROR if the lock could not be created or the storage could not be
+ * mounted.
+ */
+int32 OS_FreeRTOS_FileSysInit(void);
+
+/*
+ * Defined in os-impl-tasks.c. Converts a wait in milliseconds to ticks,
+ * rounding up so the wait is never shorter than asked (pdMS_TO_TICKS()
+ * truncates, and a sub-tick wait would become zero ticks, i.e. a yield or a
+ * poll). Zero stays zero. Every OSAL call that waits goes through this, not
+ * pdMS_TO_TICKS() directly.
+ */
+TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
 
 #endif /* OS_FREERTOS_H */

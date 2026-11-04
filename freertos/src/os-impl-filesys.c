@@ -22,6 +22,7 @@
 #include "os-shared-filesys.h"
 #include "os-shared-idmap.h"
 
+#include "os-freertos.h"
 #include "os-impl-filesys.h"
 
 lfs_t OS_FreeRTOS_Lfs;

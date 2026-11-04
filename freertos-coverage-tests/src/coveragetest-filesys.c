@@ -25,6 +25,7 @@
 #include "os-shared-filesys.h"
 #include "os-shared-idmap.h"
 
+#include "os-freertos.h"
 #include "os-impl-filesys.h"
 
 /* Captured stub call arguments and scripted values, declared in freertos-filesys-stubs.c */

@@ -11,6 +11,7 @@
 
 #include "ut-adaptor-tasks.h"
 
+#include "os-freertos.h"
 #include "os-impl-tasks.h"
 
 void *const  UT_Ref_OS_impl_task_table         = OS_impl_task_table;
