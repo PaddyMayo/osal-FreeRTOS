@@ -19,9 +19,17 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+#include "os-freertos.h"
+
+/*
+ * OS_MutSemTake() and OS_MutSemGive() look the mutex up with OS_LOCK_MODE_NONE,
+ * which does not raise the refcount that OS_MutSemDelete() waits on, so they
+ * pass through the gate, which the delete closes and waits on (os-freertos.h).
+ */
 typedef struct
 {
     SemaphoreHandle_t id;
+    OS_impl_gate_t    gate;
 } OS_impl_mutex_internal_record_t;
 
 /* Table where the OS object information is stored */
