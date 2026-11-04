@@ -17,11 +17,32 @@
 #include "osconfig.h"
 
 #include "FreeRTOS.h"
+#include "task.h"
 #include "queue.h"
 
+/*
+ * One per task blocked in OS_QueueGet_Impl, living on that task's stack. The
+ * list lets OS_QueueDelete_Impl wake the task before it frees the queue.
+ */
+typedef struct OS_impl_queue_waiter
+{
+    TaskHandle_t                 task;
+    // cppcheck-suppress unusedStructMember ; the list is walked in os-impl-queue.c
+    struct OS_impl_queue_waiter *next;
+} OS_impl_queue_waiter_t;
+
+/*
+ * OS_QueueGet() and OS_QueuePut() look the queue up with OS_LOCK_MODE_NONE,
+ * which does not raise the refcount that OS_QueueDelete() waits on, so the
+ * delete has to learn about them here. id is NULL once a delete has started;
+ * users counts the Gets and Puts that took the id before that, and so still
+ * hold the handle. Both are only changed inside a critical section.
+ */
 typedef struct
 {
-    QueueHandle_t id;
+    QueueHandle_t           id;
+    uint32                  users;
+    OS_impl_queue_waiter_t *waiters;
 } OS_impl_queue_internal_record_t;
 
 /* Table where the OS object information is stored */

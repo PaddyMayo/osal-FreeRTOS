@@ -25,6 +25,7 @@
 #include "utstubs.h"
 
 #include "FreeRTOS.h"
+#include "task.h"
 #include "queue.h"
 
 #include "os-shared-queue.h"
@@ -58,6 +59,61 @@ extern void UT_Stub_ResetReceiveData(void);
 
 #define UT_QUEUE_DEPTH    4
 #define UT_QUEUE_MSG_SIZE 8
+
+#define UT_QUEUE_HANDLE ((QueueHandle_t)0x4242)
+#define UT_TASK_A       ((TaskHandle_t)0x7101)
+#define UT_TASK_B       ((TaskHandle_t)0x7102)
+#define UT_OTHER_TASK   ((TaskHandle_t)0x7103)
+
+/* Declared in freertos-queue-stubs.c */
+extern TaskHandle_t UT_Stub_QueueCurrentTask;
+extern TaskHandle_t UT_Stub_LastAbortedTask;
+extern TickType_t   UT_Stub_QueueLastDelayTicks;
+
+/* What the hooks below saw at the moment they were called */
+static uint32       UT_Seen_Users;
+static uint32       UT_Seen_UsersAtDelay;
+static uint32       UT_Seen_UsersAtFree;
+static TaskHandle_t UT_Seen_Waiter;
+
+/* Inside xQueueReceive(): the Get has registered, and another Get joins the list in front of it */
+static int32
+UT_ReceiveSeesRegistered(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+{
+    UT_Seen_Users  = UT_QueueTest_GetImplUsers(UT_INDEX_0);
+    UT_Seen_Waiter = UT_QueueTest_GetImplWaiterTask(UT_INDEX_0);
+
+    UT_QueueTest_PushWaiter(UT_INDEX_0, UT_OTHER_TASK);
+
+    return StubRetcode;
+}
+
+/* Inside xQueueReceive(): the queue is deleted, so the blocked Get is woken without a message */
+static int32 UT_ReceiveWhileDeleted(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+{
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, NULL);
+
+    return -1;
+}
+
+/* Inside vTaskDelay(): the woken Gets run and leave */
+static int32
+UT_DelayReleasesWaiters(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+{
+    UT_Seen_UsersAtDelay = UT_QueueTest_GetImplUsers(UT_INDEX_0);
+
+    UT_QueueTest_ReleaseWaiters(UT_INDEX_0);
+
+    return StubRetcode;
+}
+
+/* Inside vQueueDelete(): who is still using the queue that is being freed */
+static int32 UT_FreeSeesUsers(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+{
+    UT_Seen_UsersAtFree = UT_QueueTest_GetImplUsers(UT_INDEX_0);
+
+    return StubRetcode;
+}
 
 /*
 **********************************************************************************
@@ -96,6 +152,39 @@ void Test_OS_QueueDelete_Impl(void)
     UtAssert_INT32_EQ(OS_QueueDelete_Impl(&token), OS_SUCCESS);
     UtAssert_STUB_COUNT(vQueueDelete, 1);
     UtAssert_True(UT_Stub_LastDeletedQueue == (QueueHandle_t)0x4242, "vQueueDelete() called with queue handle");
+
+    /* nobody was using it -> nothing to wake, nothing to wait for, and the slot no longer holds the handle */
+    UtAssert_STUB_COUNT(xTaskAbortDelay, 0);
+    UtAssert_STUB_COUNT(vTaskDelay, 0);
+    UtAssert_True(UT_QueueTest_GetImplQueueId(UT_INDEX_0) == NULL, "queue handle cleared from impl table");
+}
+
+void Test_OS_QueueDelete_Impl_Waiters(void)
+{
+    OS_object_token_t token = UT_QUEUE_TOKEN(0);
+
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
+
+    /* two tasks blocked in OS_QueueGet(); each delay lets them run and leave */
+    UT_QueueTest_PushWaiter(UT_INDEX_0, UT_TASK_A);
+    UT_QueueTest_PushWaiter(UT_INDEX_0, UT_TASK_B);
+    UT_SetHookFunction(UT_KEY(vTaskDelay), UT_DelayReleasesWaiters, NULL);
+    UT_SetHookFunction(UT_KEY(vQueueDelete), UT_FreeSeesUsers, NULL);
+
+    UtAssert_INT32_EQ(OS_QueueDelete_Impl(&token), OS_SUCCESS);
+
+    /* both were woken (the newest first, so TASK_A was the last), then it waited one tick for them */
+    UtAssert_STUB_COUNT(xTaskAbortDelay, 2);
+    UtAssert_True(UT_Stub_LastAbortedTask == UT_TASK_A, "every blocked Get was woken");
+    UtAssert_STUB_COUNT(vTaskDelay, 1);
+    UtAssert_UINT32_EQ(UT_Stub_QueueLastDelayTicks, 1);
+    UtAssert_UINT32_EQ(UT_Seen_UsersAtDelay, 2);
+
+    /* the queue is freed only once nobody uses it any more */
+    UtAssert_STUB_COUNT(vQueueDelete, 1);
+    UtAssert_True(UT_Stub_LastDeletedQueue == UT_QUEUE_HANDLE, "vQueueDelete() called with queue handle");
+    UtAssert_UINT32_EQ(UT_Seen_UsersAtFree, 0);
+    UtAssert_True(UT_QueueTest_GetImplQueueId(UT_INDEX_0) == NULL, "queue handle cleared from impl table");
 }
 
 void Test_OS_QueueGet_Impl(void)
@@ -197,6 +286,86 @@ void Test_OS_QueuePut_Impl(void)
     UtAssert_STUB_COUNT(xQueueSend, 3);
 }
 
+void Test_OS_QueueGet_Impl_Registers(void)
+{
+    OS_object_token_t token = UT_QUEUE_TOKEN(0);
+    unsigned char     message[UT_QUEUE_MSG_SIZE];
+    unsigned char     buffer[UT_QUEUE_MSG_SIZE];
+    size_t            size_copied = 0;
+
+    memset(message, 0xA5, sizeof(message));
+
+    OS_queue_table[0].max_depth = UT_QUEUE_DEPTH;
+    OS_queue_table[0].max_size  = UT_QUEUE_MSG_SIZE;
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
+    UT_Stub_SetReceiveData(message, sizeof(message));
+    UT_SetHookFunction(UT_KEY(xQueueReceive), UT_ReceiveSeesRegistered, NULL);
+
+    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_SUCCESS);
+
+    /* while blocked, the Get counted as a user and was listed under the task that called it */
+    UtAssert_UINT32_EQ(UT_Seen_Users, 1);
+    UtAssert_True(UT_Seen_Waiter == UT_Stub_QueueCurrentTask, "blocked Get listed under its task");
+
+    /* it left the list from behind the Get that joined while it was blocked, and that one is untouched */
+    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 1);
+    UtAssert_True(UT_QueueTest_GetImplWaiterTask(UT_INDEX_0) == UT_OTHER_TASK, "other Get still listed");
+
+    UT_QueueTest_ReleaseWaiters(UT_INDEX_0);
+    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
+}
+
+void Test_OS_QueueGet_Impl_Deleted(void)
+{
+    OS_object_token_t token = UT_QUEUE_TOKEN(0);
+    unsigned char     buffer[UT_QUEUE_MSG_SIZE];
+    size_t            size_copied;
+
+    OS_queue_table[0].max_depth = UT_QUEUE_DEPTH;
+    OS_queue_table[0].max_size  = UT_QUEUE_MSG_SIZE;
+
+    /* the queue is already gone (a delete has started) -> refused before FreeRTOS is touched */
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, NULL);
+    size_copied = 99;
+    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_ERR_INVALID_ID);
+    UtAssert_UINT32_EQ(size_copied, 0);
+    UtAssert_STUB_COUNT(xQueueReceive, 0);
+    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
+    UtAssert_True(UT_QueueTest_GetImplWaiterTask(UT_INDEX_0) == NULL, "refused Get not listed");
+
+    /* deleted while blocked: the Get is woken without a message and reports that, not a timeout */
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
+    UT_SetHookFunction(UT_KEY(xQueueReceive), UT_ReceiveWhileDeleted, NULL);
+    size_copied = 99;
+    UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_PEND), OS_ERROR);
+    UtAssert_STUB_COUNT(xQueueReceive, 1);
+    UtAssert_UINT32_EQ(size_copied, 0);
+    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
+    UtAssert_True(UT_QueueTest_GetImplWaiterTask(UT_INDEX_0) == NULL, "woken Get no longer listed");
+}
+
+void Test_OS_QueuePut_Impl_Deleted(void)
+{
+    OS_object_token_t token = UT_QUEUE_TOKEN(0);
+    unsigned char     message[UT_QUEUE_MSG_SIZE];
+
+    memset(message, 0x5A, sizeof(message));
+
+    OS_queue_table[0].max_depth = UT_QUEUE_DEPTH;
+    OS_queue_table[0].max_size  = UT_QUEUE_MSG_SIZE;
+
+    /* the queue is already gone (a delete has started) -> refused before FreeRTOS is touched */
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, NULL);
+    UtAssert_INT32_EQ(OS_QueuePut_Impl(&token, message, UT_QUEUE_MSG_SIZE, 0), OS_ERR_INVALID_ID);
+    UtAssert_STUB_COUNT(xQueueSend, 0);
+    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
+
+    /* a Put that finishes leaves no trace for a delete to wait on */
+    UT_QueueTest_SetImplQueueId(UT_INDEX_0, UT_QUEUE_HANDLE);
+    UtAssert_INT32_EQ(OS_QueuePut_Impl(&token, message, UT_QUEUE_MSG_SIZE, 0), OS_SUCCESS);
+    UtAssert_UINT32_EQ(UT_QueueTest_GetImplUsers(UT_INDEX_0), 0);
+}
+
 void Test_OS_QueueGetInfo_Impl(void)
 {
     OS_object_token_t token = UT_QUEUE_TOKEN(0);
@@ -227,7 +396,11 @@ void UtTest_Setup(void)
 {
     ADD_TEST(OS_QueueCreate_Impl);
     ADD_TEST(OS_QueueDelete_Impl);
+    ADD_TEST(OS_QueueDelete_Impl_Waiters);
     ADD_TEST(OS_QueueGet_Impl);
+    ADD_TEST(OS_QueueGet_Impl_Registers);
+    ADD_TEST(OS_QueueGet_Impl_Deleted);
     ADD_TEST(OS_QueuePut_Impl);
+    ADD_TEST(OS_QueuePut_Impl_Deleted);
     ADD_TEST(OS_QueueGetInfo_Impl);
 }
