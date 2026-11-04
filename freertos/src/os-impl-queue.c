@@ -96,7 +96,7 @@ int32 OS_QueueGet_Impl(const OS_object_token_t *token, void *data, size_t size, 
 {
     OS_impl_queue_internal_record_t  *impl;
     const OS_queue_internal_record_t *queue;
-    OS_impl_gate_waiter_t             waiter;
+    OS_impl_gate_user_t               user;
     TickType_t                        ticks;
     size_t                            max_size;
     BaseType_t                        received;
@@ -131,14 +131,14 @@ int32 OS_QueueGet_Impl(const OS_object_token_t *token, void *data, size_t size, 
         ticks = OS_FreeRTOS_MsToTicks(timeout);
     }
 
-    if (!OS_FreeRTOS_GateEnter(&impl->gate, &waiter))
+    if (!OS_FreeRTOS_GateEnter(&impl->gate, &user))
     {
         *size_copied = 0;
         return OS_ERR_INVALID_ID;
     }
 
     received = xQueueReceive(impl->id, data, ticks);
-    deleted  = OS_FreeRTOS_GateLeave(&impl->gate, &waiter);
+    deleted  = OS_FreeRTOS_GateLeave(&impl->gate, &user);
 
     if (received != pdPASS)
     {
@@ -174,6 +174,7 @@ int32 OS_QueuePut_Impl(const OS_object_token_t *token, const void *data, size_t 
 {
     OS_impl_queue_internal_record_t  *impl;
     const OS_queue_internal_record_t *queue;
+    OS_impl_gate_user_t               user;
     BaseType_t                        sent;
 
     impl  = OS_OBJECT_TABLE_GET(OS_impl_queue_table, *token);
@@ -189,14 +190,14 @@ int32 OS_QueuePut_Impl(const OS_object_token_t *token, const void *data, size_t 
         return OS_QUEUE_INVALID_SIZE;
     }
 
-    if (!OS_FreeRTOS_GateEnter(&impl->gate, NULL))
+    if (!OS_FreeRTOS_GateEnter(&impl->gate, &user))
     {
         return OS_ERR_INVALID_ID;
     }
 
     /* OS_QueuePut() is documented as non-blocking, so use a zero timeout. */
     sent = xQueueSend(impl->id, data, 0);
-    (void)OS_FreeRTOS_GateLeave(&impl->gate, NULL);
+    (void)OS_FreeRTOS_GateLeave(&impl->gate, &user);
 
     if (sent != pdPASS)
     {

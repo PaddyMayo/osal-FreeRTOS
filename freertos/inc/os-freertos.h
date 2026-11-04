@@ -20,7 +20,9 @@
  *       closed, so nobody new gets in;
  *     - the delete calls OS_FreeRTOS_GateClose(), then loops on
  *       OS_FreeRTOS_GateWake() (which also wakes users blocked in the kernel)
- *       until no user is left, and only then frees the kernel object.
+ *       until no user is left, and only then frees the kernel object;
+ *     - a task deleted while it is in such a call never reaches Leave, so the
+ *       task module drops its nodes with OS_FreeRTOS_GateReleaseTask() first.
  *
  *   The gate holds no kernel handle: each object keeps its own, typed, beside
  *   it. Reading that handle after a successful Enter is safe, because the
@@ -36,42 +38,41 @@
 #include "task.h"
 
 /*
- * One per task blocked in the kernel on a gated object, living on that task's
- * stack, so a delete can wake the task before it frees the object.
- */
-typedef struct OS_impl_gate_waiter
-{
-    TaskHandle_t                task;
-    // cppcheck-suppress unusedStructMember ; the list is walked in os-impl-common.c
-    struct OS_impl_gate_waiter *next;
-} OS_impl_gate_waiter_t;
-
-/*
- * closed is set once a delete has started; users counts the callers between
- * Enter and Leave. Both, and the list, are only changed inside a critical
- * section. A zeroed gate is open, with nobody in it.
+ * closed is set once a delete has started. A zeroed gate is open.
  */
 typedef struct
 {
     // cppcheck-suppress unusedStructMember ; used in os-impl-common.c
-    bool                   closed;
-    uint32                 users;
-    // cppcheck-suppress unusedStructMember ; used in os-impl-common.c
-    OS_impl_gate_waiter_t *waiters;
+    bool closed;
 } OS_impl_gate_t;
 
 /*
- * Counts the caller as a user and returns true, or returns false (counting
- * nothing) if the gate is closed. A caller that may block in the kernel passes
- * a waiter node, which is listed under the calling task until Leave.
+ * One per call in progress on a gated object, living on the stack of the task
+ * that makes it. All of them are linked into one list, kept in os-impl-common.c,
+ * and the users of a gate are the nodes that point at it. The list lets a
+ * delete wake the tasks blocked in the kernel, and lets the nodes of a task
+ * that is deleted mid-call, which would outlive its stack, be dropped.
  */
-bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_waiter_t *waiter);
+typedef struct OS_impl_gate_user
+{
+    TaskHandle_t              task;
+    // cppcheck-suppress unusedStructMember ; the list is walked in os-impl-common.c
+    const OS_impl_gate_t     *gate;
+    // cppcheck-suppress unusedStructMember ; the list is walked in os-impl-common.c
+    struct OS_impl_gate_user *next;
+} OS_impl_gate_user_t;
 
 /*
- * Undoes Enter (pass the same waiter, or NULL). Returns true if the gate was
- * closed while the caller was in, i.e. the object is being deleted.
+ * Lists the caller, through user, under the calling task and the gate, and
+ * returns true; or returns false (listing nothing) if the gate is closed.
  */
-bool OS_FreeRTOS_GateLeave(OS_impl_gate_t *gate, const OS_impl_gate_waiter_t *waiter);
+bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_user_t *user);
+
+/*
+ * Undoes Enter (pass the same user). Returns true if the gate was closed while
+ * the caller was in, i.e. the object is being deleted.
+ */
+bool OS_FreeRTOS_GateLeave(const OS_impl_gate_t *gate, const OS_impl_gate_user_t *user);
 
 /* Lets users in again; called when the object is created */
 void OS_FreeRTOS_GateOpen(OS_impl_gate_t *gate);
@@ -82,11 +83,20 @@ void OS_FreeRTOS_GateClose(OS_impl_gate_t *gate);
 bool OS_FreeRTOS_GateIsClosed(const OS_impl_gate_t *gate);
 
 /*
- * Wakes every listed task blocked in the kernel, and returns how many users
- * are still in. A delete calls this until it returns 0, waiting a tick between
- * calls: a user that has entered but not yet blocked is woken by a later call.
+ * Wakes every task in a call on the gate that is blocked in the kernel, and
+ * returns how many users the gate has. A delete calls this until it returns 0,
+ * waiting a tick between calls: a user that has entered but not yet blocked is
+ * woken by a later call.
  */
 uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate);
+
+/*
+ * Drops every node of a task that is about to be deleted, from every gate. A
+ * task deleted mid-call never reaches Leave, and its nodes would otherwise
+ * stay on the list, counted as users and pointing into a stack that is gone.
+ * The task must be suspended first, so that it cannot enter a gate again.
+ */
+void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task);
 
 /*
  * The init hooks OS_API_Impl_Init() in os-impl-common.c calls, each defined by

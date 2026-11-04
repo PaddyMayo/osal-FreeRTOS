@@ -63,10 +63,10 @@ extern void UT_Stub_ResetReceiveData(void);
 #define UT_QUEUE_HANDLE ((QueueHandle_t)0x4242)
 
 /* Declared in freertos-queue-stubs.c */
-extern TickType_t                   UT_Stub_QueueLastDelayTicks;
-extern const OS_impl_gate_t        *UT_Stub_LastGate;
-extern OS_impl_gate_waiter_t       *UT_Stub_LastEnterWaiter;
-extern const OS_impl_gate_waiter_t *UT_Stub_LastLeaveWaiter;
+extern TickType_t                 UT_Stub_QueueLastDelayTicks;
+extern const OS_impl_gate_t      *UT_Stub_LastGate;
+extern OS_impl_gate_user_t       *UT_Stub_LastEnterUser;
+extern const OS_impl_gate_user_t *UT_Stub_LastLeaveUser;
 
 /* Inside OS_FreeRTOS_GateWake(): the users left, as a delete sees them while the woken Gets leave one by one */
 static int32 UT_WakeCalls;
@@ -203,8 +203,8 @@ void Test_OS_QueueGet_Impl(void)
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateEnter, 1);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 1);
     UtAssert_True(UT_Stub_LastGate == UT_QueueTest_GetImplGate(UT_INDEX_0), "this queue's gate entered");
-    UtAssert_True(UT_Stub_LastEnterWaiter != NULL, "a Get passes a waiter node");
-    UtAssert_True(UT_Stub_LastLeaveWaiter == UT_Stub_LastEnterWaiter, "and leaves with the same one");
+    UtAssert_True(UT_Stub_LastEnterUser != NULL, "a Get passes a user node");
+    UtAssert_True(UT_Stub_LastLeaveUser == UT_Stub_LastEnterUser, "and leaves with the same one");
 
     /* OS_CHECK -> polls with zero ticks */
     UtAssert_INT32_EQ(OS_QueueGet_Impl(&token, buffer, sizeof(buffer), &size_copied, OS_CHECK), OS_SUCCESS);
@@ -299,7 +299,8 @@ void Test_OS_QueuePut_Impl(void)
     UtAssert_True(UT_Stub_LastSendItem == message, "xQueueSend() called with caller's message");
     UtAssert_UINT32_EQ(UT_Stub_LastSendTicks, 0);
     UtAssert_True(UT_Stub_LastGate == UT_QueueTest_GetImplGate(UT_INDEX_0), "this queue's gate entered");
-    UtAssert_True(UT_Stub_LastEnterWaiter == NULL, "a Put passes no waiter node");
+    UtAssert_True(UT_Stub_LastEnterUser != NULL, "a Put passes a user node");
+    UtAssert_True(UT_Stub_LastLeaveUser == UT_Stub_LastEnterUser, "and leaves with the same one");
 
     /* message larger than max_size -> accepted (FreeRTOS copies only max_size bytes of it) */
     UtAssert_INT32_EQ(OS_QueuePut_Impl(&token, message, sizeof(message), 0), OS_SUCCESS);

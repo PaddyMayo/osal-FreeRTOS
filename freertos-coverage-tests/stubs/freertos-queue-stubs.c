@@ -126,31 +126,30 @@ BaseType_t xQueueReceive(QueueHandle_t xQueue, void *pvBuffer, TickType_t xTicks
  * delete be seen on leaving (a non-zero default return from
  * OS_FreeRTOS_GateLeave).
  */
-TickType_t                   UT_Stub_QueueLastDelayTicks;
-const OS_impl_gate_t        *UT_Stub_LastGate;
-OS_impl_gate_waiter_t       *UT_Stub_LastEnterWaiter;
-const OS_impl_gate_waiter_t *UT_Stub_LastLeaveWaiter;
+TickType_t                 UT_Stub_QueueLastDelayTicks;
+const OS_impl_gate_t      *UT_Stub_LastGate;
+OS_impl_gate_user_t       *UT_Stub_LastEnterUser;
+const OS_impl_gate_user_t *UT_Stub_LastLeaveUser;
 
 // cppcheck-suppress constParameterCallback
-bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_waiter_t *waiter)
+bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_user_t *user)
 {
     int32 status;
 
-    UT_Stub_LastGate        = gate;
-    UT_Stub_LastEnterWaiter = waiter;
+    UT_Stub_LastGate      = gate;
+    UT_Stub_LastEnterUser = user;
 
     status = UT_DEFAULT_IMPL(OS_FreeRTOS_GateEnter);
 
     return (status >= 0);
 }
 
-// cppcheck-suppress constParameterCallback
-bool OS_FreeRTOS_GateLeave(OS_impl_gate_t *gate, const OS_impl_gate_waiter_t *waiter)
+bool OS_FreeRTOS_GateLeave(const OS_impl_gate_t *gate, const OS_impl_gate_user_t *user)
 {
     int32 status;
 
-    UT_Stub_LastGate        = gate;
-    UT_Stub_LastLeaveWaiter = waiter;
+    UT_Stub_LastGate      = gate;
+    UT_Stub_LastLeaveUser = user;
 
     status = UT_DEFAULT_IMPL(OS_FreeRTOS_GateLeave);
 

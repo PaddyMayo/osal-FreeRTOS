@@ -38,17 +38,17 @@
 #include "ut-adaptor-mutex.h"
 
 /* Captured stub call arguments, declared in freertos-mutex-stubs.c */
-extern SemaphoreHandle_t            UT_Stub_CreatedMutexHandle;
-extern SemaphoreHandle_t            UT_Stub_LastDeletedMutex;
-extern SemaphoreHandle_t            UT_Stub_LastTakeMutex;
-extern TickType_t                   UT_Stub_LastTakeMutexTicks;
-extern SemaphoreHandle_t            UT_Stub_LastGiveMutex;
-extern SemaphoreHandle_t            UT_Stub_LastHolderQueried;
-extern TaskHandle_t                 UT_Stub_MutexHolder;
-extern TickType_t                   UT_Stub_MutexLastDelayTicks;
-extern const OS_impl_gate_t        *UT_Stub_LastGate;
-extern OS_impl_gate_waiter_t       *UT_Stub_LastEnterWaiter;
-extern const OS_impl_gate_waiter_t *UT_Stub_LastLeaveWaiter;
+extern SemaphoreHandle_t          UT_Stub_CreatedMutexHandle;
+extern SemaphoreHandle_t          UT_Stub_LastDeletedMutex;
+extern SemaphoreHandle_t          UT_Stub_LastTakeMutex;
+extern TickType_t                 UT_Stub_LastTakeMutexTicks;
+extern SemaphoreHandle_t          UT_Stub_LastGiveMutex;
+extern SemaphoreHandle_t          UT_Stub_LastHolderQueried;
+extern TaskHandle_t               UT_Stub_MutexHolder;
+extern TickType_t                 UT_Stub_MutexLastDelayTicks;
+extern const OS_impl_gate_t      *UT_Stub_LastGate;
+extern OS_impl_gate_user_t       *UT_Stub_LastEnterUser;
+extern const OS_impl_gate_user_t *UT_Stub_LastLeaveUser;
 
 #define UT_MUTEX_TOKEN(idx)                                                                              \
     (OS_object_token_t)                                                                                  \
@@ -193,15 +193,15 @@ void Test_OS_MutSemGive_Impl(void)
 
     UT_MutexTest_SetImplMutexId(UT_INDEX_0, UT_MUTEX_HANDLE);
 
-    /* success -> passes through the gate without a waiter node */
+    /* success -> passes through the gate with a user node */
     UtAssert_INT32_EQ(OS_MutSemGive_Impl(&token), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreGiveRecursive, 1);
     UtAssert_True(UT_Stub_LastGiveMutex == UT_MUTEX_HANDLE, "xSemaphoreGiveRecursive() called with mutex handle");
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateEnter, 1);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 1);
     UtAssert_True(UT_Stub_LastGate == UT_MutexTest_GetImplGate(UT_INDEX_0), "this mutex's gate used");
-    UtAssert_True(UT_Stub_LastEnterWaiter == NULL, "a Give passes no waiter node");
-    UtAssert_True(UT_Stub_LastLeaveWaiter == NULL, "and leaves without one");
+    UtAssert_True(UT_Stub_LastEnterUser != NULL, "a Give passes a user node");
+    UtAssert_True(UT_Stub_LastLeaveUser == UT_Stub_LastEnterUser, "and leaves with the same one");
 
     /* the caller is not the holder -> OS_SEM_FAILURE, and the gate is still left */
     UT_SetDeferredRetcode(UT_KEY(xSemaphoreGiveRecursive), 1, -1);
@@ -222,7 +222,7 @@ void Test_OS_MutSemTake_Impl(void)
 
     UT_MutexTest_SetImplMutexId(UT_INDEX_0, UT_MUTEX_HANDLE);
 
-    /* success -> passes through the gate without a waiter node, and waits forever for the mutex */
+    /* success -> passes through the gate with a user node, and waits forever for the mutex */
     UtAssert_INT32_EQ(OS_MutSemTake_Impl(&token), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreTakeRecursive, 1);
     UtAssert_True(UT_Stub_LastTakeMutex == UT_MUTEX_HANDLE, "xSemaphoreTakeRecursive() called with mutex handle");
@@ -230,8 +230,8 @@ void Test_OS_MutSemTake_Impl(void)
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateEnter, 1);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateLeave, 1);
     UtAssert_True(UT_Stub_LastGate == UT_MutexTest_GetImplGate(UT_INDEX_0), "this mutex's gate used");
-    UtAssert_True(UT_Stub_LastEnterWaiter == NULL, "a Take passes no waiter node");
-    UtAssert_True(UT_Stub_LastLeaveWaiter == NULL, "and leaves without one");
+    UtAssert_True(UT_Stub_LastEnterUser != NULL, "a Take passes a user node");
+    UtAssert_True(UT_Stub_LastLeaveUser == UT_Stub_LastEnterUser, "and leaves with the same one");
     UtAssert_STUB_COUNT(xSemaphoreGiveRecursive, 0);
 
     /* xSemaphoreTakeRecursive() failure -> OS_SEM_FAILURE, and the gate is still left */

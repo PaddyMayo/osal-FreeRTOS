@@ -27,6 +27,7 @@
 
 #define UT_TASK_1 ((TaskHandle_t)0x7001)
 #define UT_TASK_2 ((TaskHandle_t)0x7002)
+#define UT_TASK_3 ((TaskHandle_t)0x7003)
 
 /* Captured stub call arguments, declared in freertos-common-stubs.c */
 extern TaskHandle_t       UT_Stub_CommonCurrentTask;
@@ -113,75 +114,66 @@ void Test_OS_ApplicationShutdown_Impl(void)
 
 void Test_Gate_Enter(void)
 {
-    OS_impl_gate_t        gate;
-    OS_impl_gate_waiter_t first;
-    OS_impl_gate_waiter_t second;
-    OS_impl_gate_waiter_t refused;
+    OS_impl_gate_t      gate;
+    OS_impl_gate_user_t first;
+    OS_impl_gate_user_t second;
+    OS_impl_gate_user_t refused;
 
     memset(&gate, 0, sizeof(gate));
     memset(&refused, 0, sizeof(refused));
 
-    /* a caller that cannot block is counted, not listed */
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, NULL), "open gate admits a caller");
-    UtAssert_UINT32_EQ(gate.users, 1);
-    UtAssert_True(gate.waiters == NULL, "caller without a waiter node is not listed");
-
-    /* a caller that may block is counted and listed under its task, newest first */
+    /* an open gate admits a caller and lists it under the calling task and this gate */
     UT_Stub_CommonCurrentTask = UT_TASK_1;
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &first), "open gate admits a blocking caller");
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &first), "open gate admits a caller");
     UT_Stub_CommonCurrentTask = UT_TASK_2;
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &second), "open gate admits a second blocking caller");
-    UtAssert_UINT32_EQ(gate.users, 3);
-    UtAssert_True(first.task == UT_TASK_1, "first waiter listed under its task");
-    UtAssert_True(second.task == UT_TASK_2, "second waiter listed under its task");
-    UtAssert_True(gate.waiters == &second, "newest waiter is first in the list");
-    UtAssert_True(second.next == &first, "list continues with the older waiter");
-    UtAssert_True(first.next == NULL, "list ends after the oldest waiter");
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &second), "open gate admits a second caller");
+    UtAssert_True(first.task == UT_TASK_1, "first user listed under its task");
+    UtAssert_True(second.task == UT_TASK_2, "second user listed under its task");
+    UtAssert_True(first.gate == &gate, "first user points at the gate");
+    UtAssert_True(second.gate == &gate, "second user points at the gate");
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 2);
 
-    /* a closed gate refuses, and counts and lists nothing */
+    /* a closed gate refuses, and lists nothing */
     OS_FreeRTOS_GateClose(&gate);
     UtAssert_True(!OS_FreeRTOS_GateEnter(&gate, &refused), "closed gate refuses a caller");
-    UtAssert_UINT32_EQ(gate.users, 3);
-    UtAssert_True(gate.waiters == &second, "refused caller not listed");
-    UtAssert_True(refused.task == NULL, "refused waiter node untouched");
+    UtAssert_True(refused.task == NULL, "refused user node untouched");
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 2);
+
+    /* the nodes live on this stack, so they must not outlive the test */
+    (void)OS_FreeRTOS_GateLeave(&gate, &first);
+    (void)OS_FreeRTOS_GateLeave(&gate, &second);
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 0);
 }
 
 void Test_Gate_Leave(void)
 {
-    OS_impl_gate_t        gate;
-    OS_impl_gate_waiter_t first;
-    OS_impl_gate_waiter_t second;
+    OS_impl_gate_t      gate;
+    OS_impl_gate_user_t first;
+    OS_impl_gate_user_t second;
+    OS_impl_gate_user_t third;
 
     memset(&gate, 0, sizeof(gate));
 
-    /* leaving from the head of the list */
+    /* the list is third -> second -> first; leave the newest, at the head */
     UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &first), "enter first");
     UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &second), "enter second");
-    UtAssert_True(!OS_FreeRTOS_GateLeave(&gate, &second), "leave while open reports not closed");
-    UtAssert_True(gate.waiters == &first, "newest waiter removed from the head");
-    UtAssert_UINT32_EQ(gate.users, 1);
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &third), "enter third");
+    UtAssert_True(!OS_FreeRTOS_GateLeave(&gate, &third), "leave while open reports not closed");
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 2);
 
-    /* leaving from behind another waiter */
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &second), "enter second again");
-    UtAssert_True(!OS_FreeRTOS_GateLeave(&gate, &first), "leave behind another waiter");
-    UtAssert_True(gate.waiters == &second, "newer waiter still the head");
-    UtAssert_True(second.next == NULL, "older waiter unlinked from behind it");
-    UtAssert_UINT32_EQ(gate.users, 1);
+    /* leave the oldest, behind another user */
+    UtAssert_True(!OS_FreeRTOS_GateLeave(&gate, &first), "leave behind another user");
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 1);
 
-    UtAssert_True(!OS_FreeRTOS_GateLeave(&gate, &second), "leave the last waiter");
-    UtAssert_True(gate.waiters == NULL, "list empty");
-    UtAssert_UINT32_EQ(gate.users, 0);
-
-    /* a caller without a waiter node only drops the count */
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, NULL), "enter without a waiter node");
-    UtAssert_True(!OS_FreeRTOS_GateLeave(&gate, NULL), "leave without a waiter node");
-    UtAssert_UINT32_EQ(gate.users, 0);
+    /* leave the last one */
+    UtAssert_True(!OS_FreeRTOS_GateLeave(&gate, &second), "leave the last user");
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 0);
 
     /* the gate closed while the caller was in -> reported, so the object is being deleted */
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, NULL), "enter before the close");
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &first), "enter before the close");
     OS_FreeRTOS_GateClose(&gate);
-    UtAssert_True(OS_FreeRTOS_GateLeave(&gate, NULL), "leave after the close reports it");
-    UtAssert_UINT32_EQ(gate.users, 0);
+    UtAssert_True(OS_FreeRTOS_GateLeave(&gate, &first), "leave after the close reports it");
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 0);
 }
 
 void Test_Gate_OpenClose(void)
@@ -201,26 +193,71 @@ void Test_Gate_OpenClose(void)
 
 void Test_Gate_Wake(void)
 {
-    OS_impl_gate_t        gate;
-    OS_impl_gate_waiter_t first;
-    OS_impl_gate_waiter_t second;
+    OS_impl_gate_t      gate_a;
+    OS_impl_gate_t      gate_b;
+    OS_impl_gate_user_t a1;
+    OS_impl_gate_user_t a2;
+    OS_impl_gate_user_t b1;
 
-    memset(&gate, 0, sizeof(gate));
+    memset(&gate_a, 0, sizeof(gate_a));
+    memset(&gate_b, 0, sizeof(gate_b));
 
     /* nobody in -> nothing to wake */
-    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 0);
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate_a), 0);
     UtAssert_STUB_COUNT(xTaskAbortDelay, 0);
 
-    /* two blocked callers and one that is not blocked -> only the listed tasks are woken, all users counted */
     UT_Stub_CommonCurrentTask = UT_TASK_1;
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &first), "enter first");
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate_a, &a1), "enter gate A");
     UT_Stub_CommonCurrentTask = UT_TASK_2;
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &second), "enter second");
-    UtAssert_True(OS_FreeRTOS_GateEnter(&gate, NULL), "enter without a waiter node");
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate_a, &a2), "enter gate A again");
+    UT_Stub_CommonCurrentTask = UT_TASK_3;
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate_b, &b1), "enter gate B");
 
-    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 3);
+    /* only the tasks in a call on THIS gate are woken, and its users counted */
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate_a), 2);
     UtAssert_STUB_COUNT(xTaskAbortDelay, 2);
-    UtAssert_True(UT_Stub_LastAbortedTask == UT_TASK_1, "the oldest waiter is woken too");
+    UtAssert_True(UT_Stub_LastAbortedTask == UT_TASK_1, "the oldest user of the gate is woken too");
+
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate_b), 1);
+    UtAssert_STUB_COUNT(xTaskAbortDelay, 3);
+    UtAssert_True(UT_Stub_LastAbortedTask == UT_TASK_3, "gate B's user is woken");
+
+    (void)OS_FreeRTOS_GateLeave(&gate_a, &a1);
+    (void)OS_FreeRTOS_GateLeave(&gate_a, &a2);
+    (void)OS_FreeRTOS_GateLeave(&gate_b, &b1);
+}
+
+void Test_Gate_ReleaseTask(void)
+{
+    OS_impl_gate_t      gate_a;
+    OS_impl_gate_t      gate_b;
+    OS_impl_gate_user_t t1_a;
+    OS_impl_gate_user_t t2_a;
+    OS_impl_gate_user_t t1_b;
+
+    memset(&gate_a, 0, sizeof(gate_a));
+    memset(&gate_b, 0, sizeof(gate_b));
+
+    /* the list is t1_b -> t2_a -> t1_a: task 1 has a node at the head and at the end, task 2 one between */
+    UT_Stub_CommonCurrentTask = UT_TASK_1;
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate_a, &t1_a), "task 1 enters gate A");
+    UT_Stub_CommonCurrentTask = UT_TASK_2;
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate_a, &t2_a), "task 2 enters gate A");
+    UT_Stub_CommonCurrentTask = UT_TASK_1;
+    UtAssert_True(OS_FreeRTOS_GateEnter(&gate_b, &t1_b), "task 1 enters gate B");
+
+    OS_FreeRTOS_GateReleaseTask(UT_TASK_1);
+
+    /* task 1's nodes are gone from both gates, task 2's stays */
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate_a), 1);
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate_b), 0);
+
+    /* a task with no nodes -> nothing changes */
+    OS_FreeRTOS_GateReleaseTask(UT_TASK_3);
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate_a), 1);
+
+    (void)OS_FreeRTOS_GateLeave(&gate_a, &t2_a);
+    UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate_a), 0);
 }
 
 /*
@@ -253,4 +290,5 @@ void UtTest_Setup(void)
     ADD_TEST(Gate_Leave);
     ADD_TEST(Gate_OpenClose);
     ADD_TEST(Gate_Wake);
+    ADD_TEST(Gate_ReleaseTask);
 }
