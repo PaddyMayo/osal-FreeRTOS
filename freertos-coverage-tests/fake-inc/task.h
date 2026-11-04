@@ -47,6 +47,8 @@ void OCS_vTaskSuspend(TaskHandle_t xTaskToSuspend);
 
 void OCS_vTaskDelay(TickType_t xTicksToDelay);
 
+BaseType_t OCS_xTaskAbortDelay(TaskHandle_t xTask);
+
 void OCS_vTaskPrioritySet(TaskHandle_t xTask, UBaseType_t uxNewPriority);
 
 void OCS_vTaskEnterCritical(void);
@@ -65,6 +67,7 @@ void OCS_vTaskSetThreadLocalStoragePointer(TaskHandle_t xTaskToSet, int xIndex, 
 #define vTaskDelete                        OCS_vTaskDelete
 #define vTaskSuspend                       OCS_vTaskSuspend
 #define vTaskDelay                         OCS_vTaskDelay
+#define xTaskAbortDelay                    OCS_xTaskAbortDelay
 #define vTaskPrioritySet                   OCS_vTaskPrioritySet
 #define vTaskEnterCritical                 OCS_vTaskEnterCritical
 #define vTaskExitCritical                  OCS_vTaskExitCritical

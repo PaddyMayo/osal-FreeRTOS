@@ -15,6 +15,7 @@
 #include "utstubs.h"
 
 #include "FreeRTOS.h"
+#include "task.h"
 #include "queue.h"
 
 #define UT_STUB_MAX_ITEM_SIZE 64
@@ -113,6 +114,48 @@ BaseType_t xQueueReceive(QueueHandle_t xQueue, void *pvBuffer, TickType_t xTicks
     memcpy(pvBuffer, UT_Stub_ReceiveData, UT_Stub_ReceiveDataSize);
 
     return pdPASS;
+}
+
+/*
+ * The task API os-impl-queue.c uses to register Gets and wake them on a
+ * delete. This runner links only the queue module, so it gets stand-ins here
+ * (the tasks module's own are in freertos-tasks-stubs.c).
+ */
+TaskHandle_t UT_Stub_QueueCurrentTask = (TaskHandle_t)0x7000;
+TaskHandle_t UT_Stub_LastAbortedTask;
+TickType_t   UT_Stub_QueueLastDelayTicks;
+
+TaskHandle_t xTaskGetCurrentTaskHandle(void)
+{
+    UT_DEFAULT_IMPL(xTaskGetCurrentTaskHandle);
+
+    return UT_Stub_QueueCurrentTask;
+}
+
+BaseType_t xTaskAbortDelay(TaskHandle_t xTask)
+{
+    UT_Stub_LastAbortedTask = xTask;
+
+    UT_DEFAULT_IMPL(xTaskAbortDelay);
+
+    return pdPASS;
+}
+
+void vTaskDelay(TickType_t xTicksToDelay)
+{
+    UT_Stub_QueueLastDelayTicks = xTicksToDelay;
+
+    UT_DEFAULT_IMPL(vTaskDelay);
+}
+
+void vTaskEnterCritical(void)
+{
+    UT_DEFAULT_IMPL(vTaskEnterCritical);
+}
+
+void vTaskExitCritical(void)
+{
+    UT_DEFAULT_IMPL(vTaskExitCritical);
 }
 
 /*
