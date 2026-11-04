@@ -62,14 +62,6 @@ extern OS_impl_task_tcb_t OS_impl_task_tcb_pool[OS_MAX_TASKS];
 UBaseType_t OS_FreeRTOS_PriorityRemap(osal_priority_t priority);
 
 /*
- * Converts a wait in milliseconds to ticks, rounding up so the wait is never
- * shorter than asked (pdMS_TO_TICKS() truncates, and a sub-tick wait would
- * become zero ticks, i.e. a yield or a poll). Zero stays zero. Every OSAL call
- * that waits goes through this, not pdMS_TO_TICKS() directly.
- */
-TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
-
-/*
  * How long OS_TaskCreate_Impl() waits for a TCB pool entry before giving up with
  * OS_ERR_TRY_AGAIN. A task that exited leaves its entry to the timer task,
  * which runs at the highest priority and frees it at once, or to the idle task
@@ -80,8 +72,5 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
 #define OS_FREERTOS_TCB_WAIT_MS 100U
 
 void OS_FreeRTOS_TaskCleanup(const void *tcb);
-
-/* Creates the semaphore that counts free TCB pool entries. Called from OS_API_Impl_Init(). */
-int32 OS_FreeRTOS_TaskInit(void);
 
 #endif /* OS_IMPL_TASKS_H */

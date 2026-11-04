@@ -23,9 +23,6 @@
 #include "os-shared-idmap.h"
 
 #include "os-freertos.h"
-#include "os-impl-tasks.h"
-#include "os-impl-files.h"
-#include "os-impl-filesys.h"
 
 static StaticSemaphore_t OS_FreeRTOS_IdleSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_IdleSem;

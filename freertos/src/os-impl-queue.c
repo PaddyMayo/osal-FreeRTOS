@@ -27,7 +27,6 @@
 
 #include "os-freertos.h"
 #include "os-impl-queue.h"
-#include "os-impl-tasks.h"
 
 OS_impl_queue_internal_record_t OS_impl_queue_table[OS_MAX_QUEUES];
 

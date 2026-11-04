@@ -22,6 +22,7 @@
 #include "os-shared-file.h"
 #include "os-shared-idmap.h"
 
+#include "os-freertos.h"
 #include "os-impl-files.h"
 
 /* Captured stub call arguments and scripted values, declared in freertos-files-stubs.c */

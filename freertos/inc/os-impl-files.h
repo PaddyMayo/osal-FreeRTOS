@@ -32,14 +32,4 @@ typedef struct
 /* The global file handle table, indexed like OS_stream_table */
 extern OS_impl_file_internal_record_t OS_impl_filehandle_table[OS_MAX_NUM_OPEN_FILES];
 
-/*----------------------------------------------------------------
- *
- *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           Clears the file handle table. Called from OS_API_Impl_Init.
- *
- *  Returns: OS_SUCCESS
- *
- *-----------------------------------------------------------------*/
-int32 OS_FreeRTOS_FileInit(void);
-
 #endif /* OS_IMPL_FILES_H */

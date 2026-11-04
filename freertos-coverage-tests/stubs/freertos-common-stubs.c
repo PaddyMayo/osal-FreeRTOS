@@ -19,9 +19,7 @@
 
 #include "osapi-error.h"
 
-#include "os-impl-tasks.h"
-#include "os-impl-files.h"
-#include "os-impl-filesys.h"
+#include "os-freertos.h"
 
 StaticSemaphore_t *UT_Stub_LastCreateSemBuffer;
 SemaphoreHandle_t  UT_Stub_LastTakeSem;

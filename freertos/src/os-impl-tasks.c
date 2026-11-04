@@ -10,6 +10,7 @@
 
 #include "osconfig.h"
 
+#include "os-freertos.h"
 #include "os-impl-tasks.h"
 
 OS_impl_task_internal_record_t OS_impl_task_table[OS_MAX_TASKS];
@@ -72,7 +73,7 @@ UBaseType_t OS_FreeRTOS_PriorityRemap(osal_priority_t priority)
  *           yields and a zero queue timeout polls. Zero stays zero (no wait);
  *           anything else gets one tick on top of the truncated value, which
  *           covers the sub-tick remainder and the partly elapsed tick the
- *           caller is already in. See prototype in os-impl-tasks.h.
+ *           caller is already in. See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
 TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
@@ -89,7 +90,7 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
  *
  *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Creates the semaphore that counts the TCB pool entries not in
- *           use. See prototype in os-impl-tasks.h.
+ *           use. See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
 int32 OS_FreeRTOS_TaskInit(void)

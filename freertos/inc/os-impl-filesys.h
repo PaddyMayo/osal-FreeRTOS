@@ -32,19 +32,6 @@ extern lfs_t OS_FreeRTOS_Lfs;
 
 /*----------------------------------------------------------------
  *
- *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           Creates the lock that serializes every call into OS_FreeRTOS_Lfs,
- *           then mounts the BSP's storage into it, formatting the device
- *           first if it holds no file system. Called from OS_API_Impl_Init.
- *
- *  Returns: OS_SUCCESS, or OS_ERROR if the lock could not be created or
- *           the storage could not be mounted
- *
- *-----------------------------------------------------------------*/
-int32 OS_FreeRTOS_FileSysInit(void);
-
-/*----------------------------------------------------------------
- *
  *  Purpose: Port-internal helper routines, not part of OSAL API.
  *           Take and give the lock around every call into OS_FreeRTOS_Lfs,
  *           which is not thread safe. Not recursive, and never held across a
