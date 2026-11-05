@@ -112,6 +112,7 @@ add_custom_target(freertos_coverage_tests)
 # and a test case src/coveragetest-${MODULE}.c
 set(FREERTOS_MODULE_LIST
     common
+    dir
     files
     filesys
     heap
