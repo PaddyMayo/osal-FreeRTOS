@@ -26,6 +26,8 @@ typedef struct
     unsigned char reserved[4];
 } StaticSemaphore_t;
 
+SemaphoreHandle_t OCS_xSemaphoreCreateBinary(void);
+
 SemaphoreHandle_t OCS_xSemaphoreCreateBinaryStatic(StaticSemaphore_t *pxSemaphoreBuffer);
 
 SemaphoreHandle_t OCS_xSemaphoreCreateMutexStatic(StaticSemaphore_t *pxMutexBuffer);
@@ -48,6 +50,9 @@ BaseType_t OCS_xSemaphoreGiveRecursive(SemaphoreHandle_t xMutex);
 
 TaskHandle_t OCS_xSemaphoreGetMutexHolder(SemaphoreHandle_t xSemaphore);
 
+UBaseType_t OCS_uxSemaphoreGetCount(SemaphoreHandle_t xSemaphore);
+
+#define xSemaphoreCreateBinary         OCS_xSemaphoreCreateBinary
 #define xSemaphoreCreateBinaryStatic   OCS_xSemaphoreCreateBinaryStatic
 #define xSemaphoreCreateMutexStatic    OCS_xSemaphoreCreateMutexStatic
 #define xSemaphoreCreateCountingStatic OCS_xSemaphoreCreateCountingStatic
@@ -58,5 +63,6 @@ TaskHandle_t OCS_xSemaphoreGetMutexHolder(SemaphoreHandle_t xSemaphore);
 #define xSemaphoreTakeRecursive        OCS_xSemaphoreTakeRecursive
 #define xSemaphoreGiveRecursive        OCS_xSemaphoreGiveRecursive
 #define xSemaphoreGetMutexHolder       OCS_xSemaphoreGetMutexHolder
+#define uxSemaphoreGetCount            OCS_uxSemaphoreGetCount
 
 #endif /* SEMAPHORE_H */
