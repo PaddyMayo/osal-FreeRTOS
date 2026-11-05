@@ -318,8 +318,9 @@ static void OS_FreeRTOS_DeleteHandedOver(void *pvParameter1, uint32_t ulParamete
  *-----------------------------------------------------------------*/
 static void OS_FreeRTOS_DeleteSelf(void)
 {
-    /* It cannot give its mutexes back once it is gone: orphan the ones it still holds */
+    /* It cannot give its mutexes back once it is gone: orphan the ones it still holds, condition variables' too */
     OS_FreeRTOS_MutexOwnerDied(xTaskGetCurrentTaskHandle());
+    OS_FreeRTOS_CondVarTaskDied(xTaskGetCurrentTaskHandle());
 
     if (xTimerPendFunctionCall(OS_FreeRTOS_DeleteHandedOver, xTaskGetCurrentTaskHandle(), 0, 0) == pdTRUE)
     {
@@ -393,11 +394,15 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
          * a mutex Take never leaves, and its nodes live on a stack that is about to go.
          * It cannot give back the mutexes it holds either, so those are orphaned, which
          * wakes whoever waits on them; that must finish before the task, and its TCB,
-         * go.
+         * go. A task deleted while it waits on a condition variable leaves a node on its
+         * stack in that variable's wait list, which the next signal would follow into
+         * the freed stack; the same call drops it, and orphans the condition variables'
+         * mutexes the task holds.
          */
         vTaskSuspend(handle);
         OS_FreeRTOS_GateReleaseTask(handle);
         OS_FreeRTOS_MutexOwnerDied(handle);
+        OS_FreeRTOS_CondVarTaskDied(handle);
         vTaskDelete(handle);
     }
 

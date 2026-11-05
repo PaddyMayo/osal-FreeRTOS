@@ -140,4 +140,16 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
  */
 void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task);
 
+/*
+ * Defined in os-impl-condvar.c. Called for a task about to be deleted, before it
+ * is, right after OS_FreeRTOS_MutexOwnerDied(), for the condition variables. A
+ * task blocked in OS_CondVarWait() has a node on its stack in the variable's wait
+ * list, which a later signal would follow into the freed stack and notify a freed
+ * TCB: the node is unlinked. A condition variable's mutex that the task holds is
+ * orphaned like any other: the gate is closed, the calls blocked on it are woken
+ * with an error, and the call returns once none is left in. The task must be
+ * suspended first (or be the caller). Blocks, so it is not for interrupt context.
+ */
+void OS_FreeRTOS_CondVarTaskDied(TaskHandle_t task);
+
 #endif /* OS_FREERTOS_H */

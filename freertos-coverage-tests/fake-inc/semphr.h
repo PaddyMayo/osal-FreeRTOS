@@ -30,6 +30,8 @@ SemaphoreHandle_t OCS_xSemaphoreCreateBinary(void);
 
 SemaphoreHandle_t OCS_xSemaphoreCreateBinaryStatic(StaticSemaphore_t *pxSemaphoreBuffer);
 
+SemaphoreHandle_t OCS_xSemaphoreCreateMutex(void);
+
 SemaphoreHandle_t OCS_xSemaphoreCreateMutexStatic(StaticSemaphore_t *pxMutexBuffer);
 
 SemaphoreHandle_t OCS_xSemaphoreCreateCounting(UBaseType_t uxMaxCount, UBaseType_t uxInitialCount);
@@ -56,6 +58,7 @@ UBaseType_t OCS_uxSemaphoreGetCount(SemaphoreHandle_t xSemaphore);
 
 #define xSemaphoreCreateBinary         OCS_xSemaphoreCreateBinary
 #define xSemaphoreCreateBinaryStatic   OCS_xSemaphoreCreateBinaryStatic
+#define xSemaphoreCreateMutex          OCS_xSemaphoreCreateMutex
 #define xSemaphoreCreateMutexStatic    OCS_xSemaphoreCreateMutexStatic
 #define xSemaphoreCreateCounting       OCS_xSemaphoreCreateCounting
 #define xSemaphoreCreateCountingStatic OCS_xSemaphoreCreateCountingStatic
