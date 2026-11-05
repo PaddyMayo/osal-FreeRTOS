@@ -111,6 +111,7 @@ add_custom_target(freertos_coverage_tests)
 # Each entry corresponds to a source file name freertos/src/os-impl-${MODULE}.c
 # and a test case src/coveragetest-${MODULE}.c
 set(FREERTOS_MODULE_LIST
+    binsem
     common
     dir
     files

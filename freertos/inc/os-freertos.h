@@ -86,7 +86,8 @@ bool OS_FreeRTOS_GateIsClosed(const OS_impl_gate_t *gate);
  * Wakes every task in a call on the gate that is blocked in the kernel, and
  * returns how many users the gate has. A delete calls this until it returns 0,
  * waiting a tick between calls: a user that has entered but not yet blocked is
- * woken by a later call.
+ * woken by a later call. A binary semaphore's flush calls it once, since a
+ * task that was not yet blocked when it ran began its wait after the flush.
  */
 uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate);
 
