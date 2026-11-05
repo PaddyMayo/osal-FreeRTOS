@@ -113,6 +113,7 @@ add_custom_target(freertos_coverage_tests)
 set(FREERTOS_MODULE_LIST
     binsem
     common
+    countsem
     dir
     files
     filesys
