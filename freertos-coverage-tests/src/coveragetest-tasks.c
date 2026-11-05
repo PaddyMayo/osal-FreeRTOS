@@ -248,11 +248,14 @@ void Test_OS_TaskDetach_Impl(void)
 extern TaskHandle_t UT_Stub_LastReleasedTask;
 extern TaskHandle_t UT_Stub_LastOwnerDiedTask;
 extern uint32       UT_Stub_OwnerDiedCountAtPend;
+extern TaskHandle_t UT_Stub_LastCondVarDiedTask;
+extern uint32       UT_Stub_CondVarDiedCountAtPend;
 
 /* Inside vTaskDelete(): how far the delete of another task had got, to check the order */
 static uint32 UT_SuspendsAtDelete;
 static uint32 UT_ReleasesAtDelete;
 static uint32 UT_OwnerDiedAtDelete;
+static uint32 UT_CondVarDiedAtDelete;
 
 static int32 UT_DeleteSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
 {
@@ -260,9 +263,10 @@ static int32 UT_DeleteSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCou
     (void)CallCount;
     (void)Context;
 
-    UT_SuspendsAtDelete  = UT_GetStubCount(UT_KEY(vTaskSuspend));
-    UT_ReleasesAtDelete  = UT_GetStubCount(UT_KEY(OS_FreeRTOS_GateReleaseTask));
-    UT_OwnerDiedAtDelete = UT_GetStubCount(UT_KEY(OS_FreeRTOS_MutexOwnerDied));
+    UT_SuspendsAtDelete    = UT_GetStubCount(UT_KEY(vTaskSuspend));
+    UT_ReleasesAtDelete    = UT_GetStubCount(UT_KEY(OS_FreeRTOS_GateReleaseTask));
+    UT_OwnerDiedAtDelete   = UT_GetStubCount(UT_KEY(OS_FreeRTOS_MutexOwnerDied));
+    UT_CondVarDiedAtDelete = UT_GetStubCount(UT_KEY(OS_FreeRTOS_CondVarTaskDied));
 
     return StubRetcode;
 }
@@ -283,6 +287,9 @@ void Test_OS_TaskDelete_Impl(void)
     UtAssert_UINT32_EQ(UT_ReleasesAtDelete, 1);
     UtAssert_True(UT_Stub_LastOwnerDiedTask == (TaskHandle_t)0x4242, "the mutexes it holds are orphaned");
     UtAssert_UINT32_EQ(UT_OwnerDiedAtDelete, 1);
+    UtAssert_True(UT_Stub_LastCondVarDiedTask == (TaskHandle_t)0x4242,
+                  "its place in a condition variable's wait list is dropped");
+    UtAssert_UINT32_EQ(UT_CondVarDiedAtDelete, 1);
     UtAssert_True(UT_Stub_LastDeletedHandle == (TaskHandle_t)0x4242, "vTaskDelete() called with task handle");
     UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
     UtAssert_STUB_COUNT(vPortFree, 0);
@@ -310,6 +317,9 @@ void Test_OS_TaskDelete_Impl(void)
     UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 2);
     UtAssert_True(UT_Stub_LastOwnerDiedTask == UT_Stub_CurrentTaskHandle, "the calling task orphans its own mutexes");
     UtAssert_UINT32_EQ(UT_Stub_OwnerDiedCountAtPend, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_CondVarTaskDied, 2);
+    UtAssert_True(UT_Stub_LastCondVarDiedTask == UT_Stub_CurrentTaskHandle, "the calling task drops its own wait node");
+    UtAssert_UINT32_EQ(UT_Stub_CondVarDiedCountAtPend, 2);
     UtAssert_NULL(UT_Stub_LastSuspendedHandle);
     UtAssert_NULL(UT_Stub_LastDeletedHandle);
 

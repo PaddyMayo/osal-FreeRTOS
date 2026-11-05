@@ -49,6 +49,13 @@ void OCS_vTaskDelay(TickType_t xTicksToDelay);
 
 BaseType_t OCS_xTaskAbortDelay(TaskHandle_t xTask);
 
+UBaseType_t OCS_uxTaskPriorityGet(const TaskHandle_t xTask);
+
+unsigned long
+OCS_ulTaskNotifyTakeIndexed(UBaseType_t uxIndexToWaitOn, BaseType_t xClearCountOnExit, TickType_t xTicksToWait);
+
+BaseType_t OCS_xTaskNotifyGiveIndexed(TaskHandle_t xTaskToNotify, UBaseType_t uxIndexToNotify);
+
 void OCS_vTaskPrioritySet(TaskHandle_t xTask, UBaseType_t uxNewPriority);
 
 void OCS_vTaskEnterCritical(void);
@@ -68,6 +75,9 @@ void OCS_vTaskSetThreadLocalStoragePointer(TaskHandle_t xTaskToSet, int xIndex, 
 #define vTaskSuspend                       OCS_vTaskSuspend
 #define vTaskDelay                         OCS_vTaskDelay
 #define xTaskAbortDelay                    OCS_xTaskAbortDelay
+#define uxTaskPriorityGet                  OCS_uxTaskPriorityGet
+#define ulTaskNotifyTakeIndexed            OCS_ulTaskNotifyTakeIndexed
+#define xTaskNotifyGiveIndexed             OCS_xTaskNotifyGiveIndexed
 #define vTaskPrioritySet                   OCS_vTaskPrioritySet
 #define vTaskEnterCritical                 OCS_vTaskEnterCritical
 #define vTaskExitCritical                  OCS_vTaskExitCritical

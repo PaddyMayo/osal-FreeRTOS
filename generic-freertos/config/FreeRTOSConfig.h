@@ -49,12 +49,14 @@
 #define configTOTAL_HEAP_SIZE            OSAL_FREERTOS_TOTAL_HEAP_SIZE
 
 /* Synchronization primitives OSAL needs */
-#define configUSE_MUTEXES             1
-#define configUSE_RECURSIVE_MUTEXES   1
-#define configUSE_COUNTING_SEMAPHORES 1
-#define configUSE_QUEUE_SETS          0
-#define configUSE_TASK_NOTIFICATIONS  1
-#define configQUEUE_REGISTRY_SIZE     20
+#define configUSE_MUTEXES                     1
+#define configUSE_RECURSIVE_MUTEXES           1
+#define configUSE_COUNTING_SEMAPHORES         1
+#define configUSE_QUEUE_SETS                  0
+#define configUSE_TASK_NOTIFICATIONS          1
+/* Index 0 is left to application code; the port's condition variables block on index 1 (os-impl-condvar.h) */
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES 2
+#define configQUEUE_REGISTRY_SIZE             20
 
 /* Software timers */
 #define configUSE_TIMERS             1
