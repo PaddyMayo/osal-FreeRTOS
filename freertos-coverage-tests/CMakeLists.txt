@@ -256,14 +256,14 @@ endfunction()
 # The default build is the GCC_POSIX port, which implements vPortEndScheduler and
 # says so with OSAL_FREERTOS_PORT_ENDS_SCHEDULER (generic-freertos/config/CMakeLists.txt).
 foreach(BSP_NAME ${FREERTOS_BSP_FILE_LIST})
-    freertos_add_bsp_coverage_test(${BSP_NAME} "" OSAL_FREERTOS_PORT_ENDS_SCHEDULER=1)
+    freertos_add_bsp_coverage_test(${BSP_NAME} "" OSAL_FREERTOS_PORT_POSIX=1 OSAL_FREERTOS_PORT_ENDS_SCHEDULER=1)
 endforeach()
 
 # Ports that cannot end the scheduler (the Cortex-M ports assert in
 # vPortEndScheduler) leave that define out and halt when the application ends.
 # bsp_start.c is built a second time without it to test that branch.
 if (NOT FREERTOS_COVERAGE_FIRMWARE)
-    freertos_add_bsp_coverage_test(start halt)
+    freertos_add_bsp_coverage_test(start halt OSAL_FREERTOS_PORT_POSIX=1)
 endif ()
 
 # Every freertos/src/os-impl-<module>.c must be in FREERTOS_MODULE_LIST, and so
