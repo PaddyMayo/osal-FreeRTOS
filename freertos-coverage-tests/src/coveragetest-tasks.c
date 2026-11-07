@@ -438,10 +438,10 @@ void Test_OS_TaskSetPriority_Impl(void)
 
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x55);
 
-    /* OSAL priority 0 (highest) -> FreeRTOS priority configMAX_PRIORITIES-2 (the timer task has -1) */
+    /* OSAL priority 0 (highest) -> FreeRTOS priority OSAL_FREERTOS_MAX_TASK_PRIORITY (highest) */
     UtAssert_INT32_EQ(OS_TaskSetPriority_Impl(&token, 0), OS_SUCCESS);
     UtAssert_True(UT_Stub_LastPriorityHandle == (TaskHandle_t)0x55, "vTaskPrioritySet() called with task handle");
-    UtAssert_UINT32_EQ(UT_Stub_LastPriorityValue, configMAX_PRIORITIES - 2);
+    UtAssert_UINT32_EQ(UT_Stub_LastPriorityValue, OSAL_FREERTOS_MAX_TASK_PRIORITY);
 
     /* OSAL priority OS_MAX_TASK_PRIORITY (lowest) -> FreeRTOS priority 0 (lowest) */
     UtAssert_INT32_EQ(OS_TaskSetPriority_Impl(&token, OS_MAX_TASK_PRIORITY), OS_SUCCESS);

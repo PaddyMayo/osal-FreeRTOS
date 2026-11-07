@@ -25,8 +25,10 @@
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
 #define configUSE_TICKLESS_IDLE                 0
 #define configTICK_RATE_HZ                      OSAL_FREERTOS_TICK_RATE_HZ
-/* The top level is the timer task's alone: OSAL tasks use 0 .. configMAX_PRIORITIES-2 (OS_FreeRTOS_PriorityRemap) */
 #define configMAX_PRIORITIES                    8
+/* The highest FreeRTOS priority an OSAL task can have (see OS_FreeRTOS_PriorityRemap); the level above is the timer
+ * task's alone */
+#define OSAL_FREERTOS_MAX_TASK_PRIORITY         (configMAX_PRIORITIES - 2)
 /* The vendor gives bytes; FreeRTOS counts words */
 #define configMINIMAL_STACK_SIZE                (OSAL_FREERTOS_MINIMAL_STACK_SIZE / sizeof(StackType_t))
 #define configMAX_TASK_NAME_LEN                 16
@@ -61,7 +63,7 @@
 
 /* Software timers */
 #define configUSE_TIMERS             1
-#define configTIMER_TASK_PRIORITY    (configMAX_PRIORITIES - 1)
+#define configTIMER_TASK_PRIORITY    (OSAL_FREERTOS_MAX_TASK_PRIORITY + 1)
 #define configTIMER_QUEUE_LENGTH     20
 #define configTIMER_TASK_STACK_DEPTH (configMINIMAL_STACK_SIZE * 2)
 

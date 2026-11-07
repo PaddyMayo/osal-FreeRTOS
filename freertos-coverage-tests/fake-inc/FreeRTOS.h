@@ -33,10 +33,12 @@ typedef struct
 
 #define portMAX_DELAY (~(TickType_t)0)
 
-#define configMAX_PRIORITIES         8
-#define configTICK_RATE_HZ           100
-#define configMINIMAL_STACK_SIZE     64
-#define configTIMER_TASK_STACK_DEPTH (configMINIMAL_STACK_SIZE * 2)
+#define configMAX_PRIORITIES            8
+/* Mirrors generic-freertos/config/FreeRTOSConfig.h */
+#define OSAL_FREERTOS_MAX_TASK_PRIORITY (configMAX_PRIORITIES - 2)
+#define configTICK_RATE_HZ              100
+#define configMINIMAL_STACK_SIZE        64
+#define configTIMER_TASK_STACK_DEPTH    (configMINIMAL_STACK_SIZE * 2)
 
 /* Two indexes: 0 for application code, 1 for the port's condition variables */
 #define configTASK_NOTIFICATION_ARRAY_ENTRIES 2

@@ -53,16 +53,16 @@ static void OS_FreeRTOSTaskEntry(void *pvParameters)
  *
  *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Remaps the OSAL priority (0=highest .. OS_MAX_TASK_PRIORITY=lowest)
- *           into a FreeRTOS priority (0=lowest .. configMAX_PRIORITIES-2=highest).
- *           The level above that, configMAX_PRIORITIES-1, is left to the timer
- *           task, so no OSAL task can run ahead of it or share its level.
+ *           into a FreeRTOS priority (0=lowest .. OSAL_FREERTOS_MAX_TASK_PRIORITY=highest).
+ *           The level above that is left to the timer task, so no OSAL task
+ *           can run ahead of it or share its level.
  *           See prototype in os-impl-tasks.h.
  *
  *-----------------------------------------------------------------*/
 UBaseType_t OS_FreeRTOS_PriorityRemap(osal_priority_t priority)
 {
-    return (UBaseType_t)(configMAX_PRIORITIES - 2)
-           - (((UBaseType_t)priority * (configMAX_PRIORITIES - 2)) / OS_MAX_TASK_PRIORITY);
+    return (UBaseType_t)OSAL_FREERTOS_MAX_TASK_PRIORITY
+           - (((UBaseType_t)priority * OSAL_FREERTOS_MAX_TASK_PRIORITY) / OS_MAX_TASK_PRIORITY);
 }
 
 /*----------------------------------------------------------------
