@@ -529,7 +529,7 @@ int main(int argc, char *argv[])
                     "OSAL_Startup",
                     (configMINIMAL_STACK_SIZE * 4),
                     NULL,
-                    ((configMAX_PRIORITIES - 2) / 2),
+                    (OSAL_FREERTOS_MAX_TASK_PRIORITY / 2),
                     NULL)
         != pdPASS)
     {
