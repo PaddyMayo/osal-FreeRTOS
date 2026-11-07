@@ -52,7 +52,8 @@ extern OS_impl_task_tcb_t OS_impl_task_tcb_pool[OS_MAX_TASKS];
 
 /*
  * Remaps an OSAL priority (0=highest .. OS_MAX_TASK_PRIORITY=lowest) into a
- * FreeRTOS priority (0=lowest .. configMAX_PRIORITIES-1=highest).
+ * FreeRTOS priority (0=lowest .. configMAX_PRIORITIES-2=highest). The level
+ * above that belongs to the timer task alone.
  *
  * Exposed to the rest of the port (not just OS_TaskCreate_Impl) because other
  * modules also spawn FreeRTOS tasks from an OSAL priority - the console writer

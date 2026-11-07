@@ -181,7 +181,7 @@ void Test_Main_NormalShutdown(void)
     UtAssert_STUB_COUNT(xTaskCreate, 1);
     UtAssert_True(strcmp(UT_Stub_LastCreateName, "OSAL_Startup") == 0, "startup task named OSAL_Startup");
     UtAssert_UINT32_EQ(UT_Stub_LastCreateStackDepth, configMINIMAL_STACK_SIZE * 4);
-    UtAssert_UINT32_EQ(UT_Stub_LastCreatePriority, configMAX_PRIORITIES / 2);
+    UtAssert_UINT32_EQ(UT_Stub_LastCreatePriority, (configMAX_PRIORITIES - 2) / 2);
     UtAssert_STUB_COUNT(vTaskStartScheduler, 1);
     UtAssert_STUB_COUNT(OS_Application_Startup, 1);
     UtAssert_STUB_COUNT(OS_Application_Run, 1);
