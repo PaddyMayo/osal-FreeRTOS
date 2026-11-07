@@ -111,8 +111,8 @@ OS_BSP_GenericFreeRTOSGlobalData_t OS_BSP_GenericFreeRTOSGlobal;
 
    The port's family comes from the macro it names in
    generic-freertos/config/CMakeLists.txt, which rejects a PORT it does not know:
-   every Cortex-M port names OSAL_FREERTOS_PORT_CORTEX_M, and anything else is
-   the POSIX simulator. NMI and HardFault cannot be masked on any ARM core: the halt loop cannot
+   every Cortex-M port names OSAL_FREERTOS_PORT_CORTEX_M and the POSIX simulator
+   names OSAL_FREERTOS_PORT_POSIX. NMI and HardFault cannot be masked on any ARM core: the halt loop cannot
    cause a HardFault, and each ARM platform should point both vectors at a
    spin loop in its startup code.
  ------------------------------------------------------------------*/
@@ -159,7 +159,7 @@ static inline void OS_BSP_HaltWait(void)
     __asm volatile("wfi" ::: "memory");
 }
 
-#else
+#elif defined(OSAL_FREERTOS_PORT_POSIX)
 
 #include <pthread.h>
 #include <signal.h>
@@ -180,6 +180,8 @@ static inline void OS_BSP_HaltWait(void)
     (void)pause();
 }
 
+#else
+#error "Unsupported port family"
 #endif
 
 /*----------------------------------------------------------------
