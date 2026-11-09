@@ -127,8 +127,8 @@ $(PLATFORMS) all $(TEST_TARGETS): ; @:
 # where the program goes: cmake runs a test as <this list> <the test>. A Linux
 # program runs under qemu-user. A Cortex-M image is booted on its board by gdb:
 # a board has no operating system to return a status to, so the script stops the
-# image where it ends and exits with its status (scripts/cortex-m-qemu/run_board_test.py).
-BOARD_RUN := gdb-multiarch;-q;-batch;-x;$(CURDIR)/scripts/cortex-m-qemu/run_board_test.py;--args
+# image where it ends and exits with its status (freertos-coverage-tests/scripts/run_board_test.py).
+BOARD_RUN := gdb-multiarch;-q;-batch;-x;$(CURDIR)/freertos-coverage-tests/scripts/run_board_test.py;--args
 
 QEMU_posix-aarch32 := qemu-arm;-L;/usr/arm-linux-gnueabihf
 QEMU_cortex-m3     := cmake;-E;env;QEMU_MACHINE=mps2-an385;$(BOARD_RUN)
