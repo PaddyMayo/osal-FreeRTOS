@@ -15,7 +15,7 @@ Only the breakpoints for functions that are in the image are set. A status of 0 
 a pass. A failure prints where it happened. A run that reaches none of them within
 the timeout is stopped and reported with where it was.
 
-Run as:  gdb-multiarch -q -batch -x scripts/cortex-m-qemu/run_board_test.py --args <firmware.elf>
+Run as:  gdb-multiarch -q -batch -x freertos-coverage-tests/scripts/run_board_test.py --args <firmware.elf>
 Environment:
     QEMU_MACHINE       the machine to run on, for example mps2-an385
     QEMU_SYSTEM        the qemu-system binary, default qemu-system-arm
