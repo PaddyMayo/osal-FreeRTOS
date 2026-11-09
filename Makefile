@@ -1,17 +1,23 @@
 # Short names for the cmake commands in CLAUDE.md, .pre-commit-config.yaml and
 # the workflows. Run `make help` for the list.
 #
-#   make build  <platform...|all>      configure and build the osal library
+#   make build  <platform...|all>      configure and build the osal library: a banner and
+#                                      a result line for each step, the tools' progress
+#                                      hidden, warnings and errors shown
+#   make build.verbose <platform...|all>  the same with everything the tools print
 #   make clean  <platform...|all>      remove the build directory of a platform
 #   make test   [whitebox|blackbox|coverage] [platform...|all]
-#   make misra  <platform...|all>      MISRA C:2012 check of the port's code
+#                                      like build, a banner and a result line per step
+#   make test.verbose [whitebox|blackbox|coverage] [platform...|all]
+#                                      the same with everything the tools print
+#   make misra <platform...|all>      MISRA C:2012 check of the port's code
 #
 # Make treats every word as a goal of its own, so the first word is the command
 # and the rest are its targets, which have empty rules further down.
 
 PLATFORMS    := posix-aarch32 cortex-m3 cortex-m4f cortex-m7 cortex-m33
 TEST_TARGETS := whitebox blackbox coverage
-COMMANDS     := build clean test misra help
+COMMANDS     := build build.verbose clean test test.verbose misra help
 
 # The platform the tests run on when none is named
 TEST_PLATFORM := posix-aarch32
@@ -32,7 +38,7 @@ TARGETS := $(filter-out $(COMMAND),$(MAKECMDGOALS))
 
 # ---- Check the command line before anything runs ----------------------------
 
-USAGE := Use: make build <platform...|all>, make clean <platform...|all>, make misra <platform...|all>, make test [$(TEST_TARGETS)] [platform...|all]. Platforms: $(PLATFORMS)
+USAGE := Use: make build <platform...|all>, make build.verbose <platform...|all>, make clean <platform...|all>, make misra <platform...|all>, make test [$(TEST_TARGETS)] [platform...|all], make test.verbose [$(TEST_TARGETS)] [platform...|all]. Platforms: $(PLATFORMS)
 
 ifneq ($(MAKECMDGOALS),)
   ifeq ($(filter $(COMMAND),$(COMMANDS)),)
@@ -45,9 +51,9 @@ ifneq ($(MAKECMDGOALS),)
     endif
   endif
 
-  ifeq ($(COMMAND),build)
+  ifneq ($(filter build build.verbose,$(COMMAND)),)
     ifeq ($(TARGETS),)
-      $(error build needs a target. $(USAGE))
+      $(error $(COMMAND) needs a target. $(USAGE))
     endif
     ifneq ($(filter-out $(PLATFORMS) all,$(TARGETS)),)
       $(error '$(filter-out $(PLATFORMS) all,$(TARGETS))' cannot be built. $(USAGE))
@@ -72,7 +78,7 @@ ifneq ($(MAKECMDGOALS),)
     endif
   endif
 
-  ifeq ($(COMMAND),test)
+  ifneq ($(filter test test.verbose,$(COMMAND)),)
     ifneq ($(filter-out $(TEST_TARGETS) $(PLATFORMS) all,$(TARGETS)),)
       $(error '$(filter-out $(TEST_TARGETS) $(PLATFORMS) all,$(TARGETS))' is not a test or a platform. $(USAGE))
     endif
@@ -82,7 +88,10 @@ endif
 # ---- Commands -----------------------------------------------------------------
 
 help:
-	@echo 'make build <platform...|all>   configure and build the osal library'
+	@echo 'make build <platform...|all>   configure and build the osal library: a banner and a result'
+	@echo '                               line per step, the tools'"'"' progress hidden'
+	@echo 'make build.verbose <platform...|all>'
+	@echo '                               the same with everything the tools print'
 	@echo 'make clean <platform...|all>   remove build/<platform> for each, nothing else'
 	@echo 'make misra <platform...|all>   MISRA C:2012 check of freertos/, generic-freertos/ and platforms/'
 	@echo 'make test [kind] [platform...|all]'
@@ -91,8 +100,10 @@ help:
 	@echo '         coverage   whitebox, then the 100% lines/branches gate'
 	@echo '  no kind: whitebox, then blackbox'
 	@echo '  no platform: $(TEST_PLATFORM)'
+	@echo 'make test.verbose [kind] [platform...|all]'
+	@echo '                               the same with everything the tools print'
 
-build: $(addprefix _build-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)))
+build build.verbose: $(addprefix _do-build-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)))
 
 clean: $(addprefix _clean-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)))
 
@@ -101,7 +112,11 @@ misra: $(addprefix _misra-,$(if $(filter all,$(TARGETS)),$(PLATFORMS),$(TARGETS)
 TESTS   := $(or $(filter $(TEST_TARGETS),$(TARGETS)),whitebox blackbox)
 TEST_ON := $(if $(filter all,$(TARGETS)),$(PLATFORMS),$(or $(filter $(PLATFORMS),$(TARGETS)),$(TEST_PLATFORM)))
 
-test: $(foreach test,$(TESTS),$(addprefix _test-$(test)-,$(TEST_ON)))
+TEST_STEP_whitebox := whitebox-test
+TEST_STEP_blackbox := blackbox-test
+TEST_STEP_coverage := coverage-gate
+
+test test.verbose: $(foreach test,$(TESTS),$(addprefix _do-$(TEST_STEP_$(test))-,$(TEST_ON)))
 
 # The words after the command are only read above
 $(PLATFORMS) all $(TEST_TARGETS): ; @:
@@ -131,11 +146,88 @@ GCOV_cortex-m33    := arm-none-eabi-gcov
 
 # Every platform is configured the same way, with the unit tests on and its QEMU
 # process as the emulator. A platform with no QEMU line above is an error.
-_configure-%:
-	cmake -Wno-dev -S . -B build/$* -C platforms/$*/config.cmake '-DCMAKE_CROSSCOMPILING_EMULATOR=$(or $(QEMU_$*),$(error $* has no QEMU_$* line in the Makefile))'
+#
+# make build and make test hide the progress of cmake, make and ctest: warnings, errors
+# and a failing test's output still show. The .verbose commands show everything.
+# CMAKE_RULE_MESSAGES and CMAKE_TARGET_MESSAGES decide whether the build prints a line
+# for every file and target. They are cache settings, so every configure states them:
+# a build directory then never keeps the quiet setting of an earlier make build.
+ifneq ($(filter build test,$(COMMAND)),)
+PROGRESS         := OFF
+CONFIGURE_FLAGS  := --log-level=WARNING
+CONFIGURE_STDOUT := >/dev/null
+BUILD_FLAGS      := -- --no-print-directory
+TEST_RUN         := STEP_CAPTURED
+else
+PROGRESS         := ON
+CONFIGURE_FLAGS  :=
+CONFIGURE_STDOUT :=
+BUILD_FLAGS      :=
+TEST_RUN         := STEP
+endif
 
-_build-%: _configure-%
-	cmake --build build/$* --target osal -j
+CONFIGURE = cmake -Wno-dev $(CONFIGURE_FLAGS) -DCMAKE_RULE_MESSAGES=$(PROGRESS) -DCMAKE_TARGET_MESSAGES=$(PROGRESS) \
+  -S . -B build/$* -C platforms/$*/config.cmake '-DCMAKE_CROSSCOMPILING_EMULATOR=$(or $(QEMU_$*),$(error $* has no QEMU_$* line in the Makefile))' $(CONFIGURE_STDOUT)
+
+BUILD_OSAL     = cmake --build build/$* --target osal -j $(BUILD_FLAGS)
+BUILD_WHITEBOX = cmake --build build/$* --target freertos_coverage_tests -j $(BUILD_FLAGS)
+BUILD_BLACKBOX = cmake --build build/$* -j $(BUILD_FLAGS)
+
+# The freertos-coverage-* pre-commit hooks. Counters from an earlier run would hide a
+# test that stopped covering, so they go before the tests run.
+CTEST_WHITEBOX = find build/$*/freertos-coverage-tests -name '*.gcda' -delete && ctest --test-dir build/$* -R '^coverage-freertos-' --timeout $(TEST_TIMEOUT) --output-on-failure
+# Everything that is not a coverage test
+CTEST_BLACKBOX = ctest --test-dir build/$* -E '^coverage-' --timeout $(TEST_TIMEOUT) --output-on-failure
+GCOVR          = gcovr --gcov-executable $(or $(GCOV_$*),$(error $* has no GCOV_$* line in the Makefile)) build/$*/freertos-coverage-tests
+
+# Plain configure, for the commands that do not show steps
+_configure-%:
+	$(CONFIGURE)
+
+# One step of a command: a banner, the command, and a result line with its time.
+# Colour only when the output is a terminal and NO_COLOR is not set.
+# $(1) platform, $(2) step, $(3) the command to run
+define STEP_SH
+if [ -t 1 ] && [ -z "$$NO_COLOR" ]; then H=$$(printf '\033[1;36m'); G=$$(printf '\033[1;32m'); R=$$(printf '\033[1;31m'); Z=$$(printf '\033[0m'); fi; \
+banner() { printf '\n%s━━ %s · %s ━━%s\n' "$$H" "$$1" "$$2" "$$Z"; }; \
+ok() { printf '%s✔ %s %s%s  (%ss)\n' "$$G" "$$1" "$$2" "$$Z" "$$3"; }; \
+bad() { printf '%s✘ %s %s failed%s  (%ss)\n' "$$R" "$$1" "$$2" "$$Z" "$$3"; }
+endef
+
+define STEP
+$(STEP_SH); banner '$(1)' '$(2)'; start=$$(date +%s); \
+if $(3); then ok '$(1)' '$(2)' "$$(( $$(date +%s) - start ))"; \
+else bad '$(1)' '$(2)' "$$(( $$(date +%s) - start ))"; exit 1; fi
+endef
+
+# The same with the command's output held back: on success only what $(4) keeps of
+# it is shown, on failure all of it
+define STEP_CAPTURED
+$(STEP_SH); banner '$(1)' '$(2)'; start=$$(date +%s); \
+if out=$$({ $(3); } 2>&1); then printf '%s\n' "$$out" | $(4); ok '$(1)' '$(2)' "$$(( $$(date +%s) - start ))"; \
+else printf '%s\n' "$$out"; bad '$(1)' '$(2)' "$$(( $$(date +%s) - start ))"; exit 1; fi
+endef
+
+_do-configure-%:
+	@$(call STEP,$*,configure,$(CONFIGURE))
+
+_do-build-%: _do-configure-%
+	@$(call STEP,$*,build,$(BUILD_OSAL))
+
+_do-whitebox-build-%: _do-configure-%
+	@$(call STEP,$*,build whitebox,$(BUILD_WHITEBOX))
+
+_do-whitebox-test-%: _do-whitebox-build-%
+	@$(call $(TEST_RUN),$*,test whitebox,$(CTEST_WHITEBOX),grep 'tests passed')
+
+_do-blackbox-build-%: _do-configure-%
+	@$(call STEP,$*,build blackbox,$(BUILD_BLACKBOX))
+
+_do-blackbox-test-%: _do-blackbox-build-%
+	@$(call $(TEST_RUN),$*,test blackbox,$(CTEST_BLACKBOX),grep 'tests passed')
+
+_do-coverage-gate-%: _do-whitebox-test-%
+	@$(call $(TEST_RUN),$*,coverage gate,$(GCOVR),tail -n 3)
 
 _clean-%:
 	rm -rf build/$*
@@ -167,18 +259,3 @@ _misra-%: _configure-%
 	  --addon=misra --enable=style --error-exitcode=1 --quiet --inline-suppr \
 	  --suppressions-list=misra-suppressions.txt \
 	  --suppress=missingIncludeSystem --suppress=misra-config
-
-# The freertos-coverage-* pre-commit hooks. Counters from an earlier run would
-# hide a test that stopped covering, so they go before the tests run.
-_test-whitebox-%: _configure-%
-	cmake --build build/$* --target freertos_coverage_tests -j
-	find build/$*/freertos-coverage-tests -name '*.gcda' -delete
-	ctest --test-dir build/$* -R '^coverage-freertos-' --timeout $(TEST_TIMEOUT) --output-on-failure
-
-# Everything that is not a coverage test; no --target, so the test programs are built
-_test-blackbox-%: _configure-%
-	cmake --build build/$* -j
-	ctest --test-dir build/$* -E '^coverage-' --timeout $(TEST_TIMEOUT) --output-on-failure
-
-_test-coverage-%: _test-whitebox-%
-	gcovr --gcov-executable $(or $(GCOV_$*),$(error $* has no GCOV_$* line in the Makefile)) build/$*/freertos-coverage-tests
