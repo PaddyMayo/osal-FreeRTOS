@@ -132,7 +132,7 @@ GCOV_cortex-m33    := arm-none-eabi-gcov
 # Every platform is configured the same way, with the unit tests on and its QEMU
 # process as the emulator. A platform with no QEMU line above is an error.
 _configure-%:
-	cmake -S . -B build/$* -C platforms/$*/config.cmake '-DCMAKE_CROSSCOMPILING_EMULATOR=$(or $(QEMU_$*),$(error $* has no QEMU_$* line in the Makefile))'
+	cmake -Wno-dev -S . -B build/$* -C platforms/$*/config.cmake '-DCMAKE_CROSSCOMPILING_EMULATOR=$(or $(QEMU_$*),$(error $* has no QEMU_$* line in the Makefile))'
 
 _build-%: _configure-%
 	cmake --build build/$* --target osal -j
