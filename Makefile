@@ -148,11 +148,14 @@ GCOV_cortex-m33    := arm-none-eabi-gcov
 # process as the emulator. A platform with no QEMU line above is an error.
 #
 # make build and make test hide the progress of cmake, make and ctest: warnings, errors
-# and a failing test's output still show. The .verbose commands show everything.
+# and a failing test's output still show. The .verbose commands show everything, and
+# so do build and test when VERBOSE is set to anything (CI does, see ci.yml).
 # CMAKE_RULE_MESSAGES and CMAKE_TARGET_MESSAGES decide whether the build prints a line
 # for every file and target. They are cache settings, so every configure states them:
 # a build directory then never keeps the quiet setting of an earlier make build.
-ifneq ($(filter build test,$(COMMAND)),)
+QUIET := $(if $(VERBOSE),,$(filter build test,$(COMMAND)))
+
+ifneq ($(QUIET),)
 PROGRESS         := OFF
 CONFIGURE_FLAGS  := --log-level=WARNING
 CONFIGURE_STDOUT := >/dev/null

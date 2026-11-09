@@ -14,6 +14,10 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     container: ghcr.io/paddymayo/osal-freertos-dev:latest
+    # The hooks run make build and make test, which hide the tools' progress. A CI log
+    # has nobody to scroll it, so it keeps everything, as make build.verbose does.
+    env:
+      VERBOSE: 1
     strategy:
       fail-fast: false
       matrix:
