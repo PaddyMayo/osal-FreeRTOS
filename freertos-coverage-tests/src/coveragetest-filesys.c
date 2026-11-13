@@ -125,9 +125,35 @@ void Test_OS_FreeRTOS_LfsLock(void)
                   "xSemaphoreGive() called with the lock");
 }
 
+/*
+ * Stands in for OS_ObjectIdFindNextMatch(): offers every volume record of the table to the match function the
+ * code under test passed, the way the real one offers the active ones. Succeeds if any of them matched.
+ */
+static int32 UT_FindNextMatchHook(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+{
+    OS_ObjectMatchFunc_t matchfunc = UT_Hook_GetArgValueByName(Context, "MatchFunc", OS_ObjectMatchFunc_t);
+    void                *arg       = UT_Hook_GetArgValueByName(Context, "arg", void *);
+    uint32               idx;
+
+    for (idx = 0; idx < OS_MAX_FILE_SYSTEMS; ++idx)
+    {
+        OS_object_token_t token = UT_FILESYS_TOKEN(idx);
+
+        if (matchfunc(arg, &token, NULL))
+        {
+            return OS_SUCCESS;
+        }
+    }
+
+    return OS_ERR_NAME_NOT_FOUND;
+}
+
 void Test_OS_FileSysStartVolume_Impl(void)
 {
     OS_object_token_t token = UT_FILESYS_TOKEN(0);
+
+    memset(OS_filesys_table, 0, sizeof(OS_filesys_table));
+    UT_SetHookFunction(UT_KEY(OS_ObjectIdFindNextMatch), UT_FindNextMatchHook, NULL);
 
     /* a cache the files can hold, no mount point given -> the directory named after the volume */
     strcpy(OS_filesys_table[0].volume_name, "RAM");
@@ -156,6 +182,34 @@ void Test_OS_FileSysStartVolume_Impl(void)
     UT_Stub_StorageConfig.cache_size = OS_FREERTOS_LFS_FILE_CACHE_SIZE + 1;
     UtAssert_INT32_EQ(OS_FileSysStartVolume_Impl(&token), OS_FS_ERR_DRIVE_NOT_CREATED);
     UtAssert_StrCmp(OS_filesys_table[0].system_mountpt, "", "no system mount point when refused");
+
+    /* "." is the root of the file system, not a directory of its own -> refused, nothing set */
+    strcpy(OS_filesys_table[0].volume_name, ".");
+    UT_Stub_StorageConfig.cache_size = OS_FREERTOS_LFS_FILE_CACHE_SIZE;
+    UtAssert_INT32_EQ(OS_FileSysStartVolume_Impl(&token), OS_FS_ERR_PATH_INVALID);
+    UtAssert_StrCmp(OS_filesys_table[0].system_mountpt, "", "no system mount point for \".\"");
+
+    /* ".." is outside the root, so it can not be created -> refused, nothing set */
+    strcpy(OS_filesys_table[0].volume_name, "..");
+    UtAssert_INT32_EQ(OS_FileSysStartVolume_Impl(&token), OS_FS_ERR_PATH_INVALID);
+    UtAssert_StrCmp(OS_filesys_table[0].system_mountpt, "", "no system mount point for \"..\"");
+
+    /* names that only start with dots are ordinary names */
+    strcpy(OS_filesys_table[0].volume_name, "..a");
+    UtAssert_INT32_EQ(OS_FileSysStartVolume_Impl(&token), OS_SUCCESS);
+    UtAssert_StrCmp(OS_filesys_table[0].system_mountpt, "/..a", "a name starting with dots is kept");
+
+    /* another volume already has the directory -> refused, nothing set */
+    memset(&OS_filesys_table[0], 0, sizeof(OS_filesys_table[0]));
+    strcpy(OS_filesys_table[0].volume_name, "RAM");
+    strcpy(OS_filesys_table[1].system_mountpt, "/RAM");
+    UtAssert_INT32_EQ(OS_FileSysStartVolume_Impl(&token), OS_FS_ERR_DRIVE_NOT_CREATED);
+    UtAssert_StrCmp(OS_filesys_table[0].system_mountpt, "", "no system mount point for a directory in use");
+
+    /* the other volumes have other directories -> the volume is not in its own way */
+    strcpy(OS_filesys_table[1].system_mountpt, "/RAM1");
+    UtAssert_INT32_EQ(OS_FileSysStartVolume_Impl(&token), OS_SUCCESS);
+    UtAssert_StrCmp(OS_filesys_table[0].system_mountpt, "/RAM", "system mount point set next to other volumes");
 }
 
 void Test_OS_FileSysStopVolume_Impl(void)
