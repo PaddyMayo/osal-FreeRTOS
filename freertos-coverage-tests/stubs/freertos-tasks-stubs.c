@@ -113,9 +113,9 @@ void OS_FreeRTOS_TaskDied(TaskHandle_t task)
 }
 
 /*
- * The port's checkpoint, and the hook os-impl-tasks.c sets for it, which is
- * kept so a test can run it. Both live in os-impl-common.c and are covered
- * there.
+ * The hook os-impl-tasks.c sets for the port's checkpoint, kept so a test can
+ * run it. The checkpoint, and the wait on time that passes it, live in
+ * os-impl-common.c and are covered there.
  */
 OS_FreeRTOS_CheckpointHook_t UT_Stub_CheckpointHook;
 
@@ -126,9 +126,11 @@ void OS_FreeRTOS_SetCheckpointHook(OS_FreeRTOS_CheckpointHook_t hook)
     UT_DEFAULT_IMPL(OS_FreeRTOS_SetCheckpointHook);
 }
 
-void OS_FreeRTOS_Checkpoint(void)
+void OS_FreeRTOS_Delay(TickType_t ticks)
 {
-    UT_DEFAULT_IMPL(OS_FreeRTOS_Checkpoint);
+    UT_Stub_LastDelayTicks = ticks;
+
+    UT_DEFAULT_IMPL(OS_FreeRTOS_Delay);
 }
 
 void vTaskSuspend(TaskHandle_t xTaskToSuspend)
@@ -161,13 +163,6 @@ BaseType_t xTimerPendFunctionCall(PendedFunction_t xFunctionToPend,
     }
 
     return pdTRUE;
-}
-
-void vTaskDelay(TickType_t xTicksToDelay)
-{
-    UT_Stub_LastDelayTicks = xTicksToDelay;
-
-    UT_DEFAULT_IMPL(vTaskDelay);
 }
 
 void vTaskEnterCritical(void)

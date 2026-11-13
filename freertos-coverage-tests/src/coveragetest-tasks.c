@@ -397,28 +397,9 @@ void Test_OS_TaskExit_Impl(void)
     UtAssert_NULL(UT_Stub_LastDeletedHandle);
 }
 
-/* Inside OS_FreeRTOS_Checkpoint(): how many delays had been made by its first pass, to check the order */
-static uint32 UT_DelaysAtFirstCheckpoint;
-
-static int32 UT_CheckpointSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
-{
-    (void)UserObj;
-    (void)Context;
-
-    /* ut_assert counts from zero here */
-    if (CallCount == 0)
-    {
-        UT_DelaysAtFirstCheckpoint = UT_GetStubCount(UT_KEY(vTaskDelay));
-    }
-
-    return StubRetcode;
-}
-
 void Test_OS_TaskDelay_Impl(void)
 {
     /* the fake kernel runs at 100 Hz: 10 ms per tick */
-    UT_DelaysAtFirstCheckpoint = 99;
-    UT_SetHookFunction(UT_KEY(OS_FreeRTOS_Checkpoint), UT_CheckpointSeesOrder, NULL);
 
     /* zero stays zero: a yield, not a sleep */
     UtAssert_INT32_EQ(OS_TaskDelay_Impl(0), OS_SUCCESS);
@@ -435,9 +416,8 @@ void Test_OS_TaskDelay_Impl(void)
     UtAssert_INT32_EQ(OS_TaskDelay_Impl(250), OS_SUCCESS);
     UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 26);
 
-    /* a delay is a wait into the port: every one passed the port's checkpoint, before it slept */
-    UtAssert_STUB_COUNT(OS_FreeRTOS_Checkpoint, 4);
-    UtAssert_UINT32_EQ(UT_DelaysAtFirstCheckpoint, 0);
+    /* every one is the port's wait on time, which is where a task that deleted itself is ended */
+    UtAssert_STUB_COUNT(OS_FreeRTOS_Delay, 4);
 }
 
 void Test_OS_TaskSetPriority_Impl(void)

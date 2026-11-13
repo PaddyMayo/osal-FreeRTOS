@@ -86,6 +86,16 @@ BaseType_t xTaskAbortDelay(TaskHandle_t xTask)
     return pdPASS;
 }
 
+/* The kernel delay the port's wait on time makes */
+TickType_t UT_Stub_CommonLastDelayTicks;
+
+void vTaskDelay(TickType_t xTicksToDelay)
+{
+    UT_Stub_CommonLastDelayTicks = xTicksToDelay;
+
+    UT_DEFAULT_IMPL(vTaskDelay);
+}
+
 void vTaskEnterCritical(void)
 {
     UT_DEFAULT_IMPL(vTaskEnterCritical);
