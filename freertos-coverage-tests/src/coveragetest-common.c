@@ -38,6 +38,7 @@ extern TickType_t         UT_Stub_LastTakeTicks;
 extern SemaphoreHandle_t  UT_Stub_LastGiveSem;
 extern void              *UT_Stub_CommonTLSValue;
 extern int                UT_Stub_LastTLSIndex;
+extern TickType_t         UT_Stub_CommonLastDelayTicks;
 
 /*
 **********************************************************************************
@@ -366,6 +367,37 @@ void Test_Checkpoint(void)
     UtAssert_STUB_COUNT(pvTaskGetThreadLocalStoragePointer, 3);
 }
 
+/* Inside the checkpoint hook: how many kernel delays had been made, to check the order */
+static uint32 UT_DelaysAtHook;
+
+static void UT_CheckpointHookSeesDelays(void)
+{
+    UT_DelaysAtHook = UT_GetStubCount(UT_KEY(vTaskDelay));
+}
+
+void Test_Delay(void)
+{
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
+    OS_FreeRTOS_SetCheckpointHook(UT_CheckpointHookSeesDelays);
+
+    /* a task whose doomed slot is clear sleeps for what it asked, zero included */
+    UT_Stub_CommonTLSValue = NULL;
+    OS_FreeRTOS_Delay(0);
+    UtAssert_STUB_COUNT(vTaskDelay, 1);
+    UtAssert_UINT32_EQ(UT_Stub_CommonLastDelayTicks, 0);
+    OS_FreeRTOS_Delay(26);
+    UtAssert_STUB_COUNT(vTaskDelay, 2);
+    UtAssert_UINT32_EQ(UT_Stub_CommonLastDelayTicks, 26);
+    UtAssert_INT32_EQ(UT_Stub_LastTLSIndex, OS_FREERTOS_TASK_DOOMED_TLS_INDEX);
+
+    /* one whose slot is set is ended by the hook before it sleeps (the hook returns here, so the sleep follows) */
+    UT_DelaysAtHook        = 99;
+    UT_Stub_CommonTLSValue = UT_TASK_1;
+    OS_FreeRTOS_Delay(1);
+    UtAssert_UINT32_EQ(UT_DelaysAtHook, 2);
+    UtAssert_STUB_COUNT(vTaskDelay, 3);
+}
+
 /*
  * Setup function prior to every test
  */
@@ -401,4 +433,5 @@ void UtTest_Setup(void)
     ADD_TEST(Gate_ReleaseTask);
     ADD_TEST(TaskDied_Hooks);
     ADD_TEST(Checkpoint);
+    ADD_TEST(Delay);
 }

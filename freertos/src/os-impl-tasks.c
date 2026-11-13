@@ -427,9 +427,7 @@ void OS_TaskExit_Impl(void)
  *-----------------------------------------------------------------*/
 int32 OS_TaskDelay_Impl(uint32 millisecond)
 {
-    OS_FreeRTOS_Checkpoint();
-
-    vTaskDelay(OS_FreeRTOS_MsToTicks(millisecond));
+    OS_FreeRTOS_Delay(OS_FreeRTOS_MsToTicks(millisecond));
 
     return OS_SUCCESS;
 }

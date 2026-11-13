@@ -333,3 +333,16 @@ void OS_FreeRTOS_Checkpoint(void)
         OS_FreeRTOS_CheckpointHook();
     }
 }
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_Delay(TickType_t ticks)
+{
+    OS_FreeRTOS_Checkpoint();
+
+    vTaskDelay(ticks);
+}

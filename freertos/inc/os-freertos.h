@@ -42,11 +42,14 @@
  *       the hooks in the order they were registered, which is the order
  *       OS_API_Impl_Init() is called in (osapi-idmap.h: mutexes before
  *       condition variables);
- *     - every wait into the port (OS_FreeRTOS_GateEnter(), OS_TaskDelay_Impl())
- *       calls OS_FreeRTOS_Checkpoint(), which ends the calling task if its
- *       OS_FREERTOS_TASK_DOOMED_TLS_INDEX slot is set, through the one hook the
- *       task module registers with OS_FreeRTOS_SetCheckpointHook(). The task
- *       module alone sets the slot, in OS_TaskDelete_Impl() on the caller.
+ *     - every wait into the port starts in os-impl-common.c, at
+ *       OS_FreeRTOS_GateEnter() for a wait on an object and OS_FreeRTOS_Delay()
+ *       for one on time. Both pass OS_FreeRTOS_Checkpoint(), which ends the
+ *       calling task if its OS_FREERTOS_TASK_DOOMED_TLS_INDEX slot is set,
+ *       through the one hook the task module registers with
+ *       OS_FreeRTOS_SetCheckpointHook(). The task module alone sets the slot,
+ *       in OS_TaskDelete_Impl() on the caller. No module blocks the kernel on
+ *       its own behalf without going through one of these two entries.
  */
 
 #ifndef OS_FREERTOS_H
@@ -146,12 +149,18 @@ void OS_FreeRTOS_SetCheckpointHook(OS_FreeRTOS_CheckpointHook_t hook);
  * The port's cancellation point: a task that deleted itself with OS_TaskDelete()
  * is not ended by that call, which has to return so OSAL can finish the delete
  * and call the delete hook (the POSIX port leaves the thread running until its
- * next cancellation point in the same way). Called where a task enters the port
- * to wait (OS_FreeRTOS_GateEnter(), OS_TaskDelay_Impl()). Returns at once for a
- * task whose OS_FREERTOS_TASK_DOOMED_TLS_INDEX slot is NULL; for one whose slot
- * is set it runs the checkpoint hook, which ends the task and does not return.
+ * next cancellation point in the same way). Passed by the port's wait entries,
+ * OS_FreeRTOS_GateEnter() and OS_FreeRTOS_Delay(). Returns at once for a task
+ * whose OS_FREERTOS_TASK_DOOMED_TLS_INDEX slot is NULL; for one whose slot is
+ * set it runs the checkpoint hook, which ends the task and does not return.
  */
 void OS_FreeRTOS_Checkpoint(void);
+
+/*
+ * The port's wait on time: passes the checkpoint, then sleeps for ticks (zero
+ * only yields). OS_TaskDelay_Impl() is this, in milliseconds.
+ */
+void OS_FreeRTOS_Delay(TickType_t ticks);
 
 /*
  * The init hooks OS_API_Impl_Init() in os-impl-common.c calls, each defined by
