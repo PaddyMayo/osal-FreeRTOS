@@ -89,6 +89,40 @@ void OS_FreeRTOS_LfsUnlock(void)
     (void)xSemaphoreGive(OS_FreeRTOS_LfsMutex);
 }
 
+/* What OS_FreeRTOS_MountPointInUse looks for, and the volume that is not to be counted */
+typedef struct
+{
+    const char  *mountpt;
+    osal_index_t self;
+} OS_FreeRTOS_MountPointRef_t;
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           A matching function for OS_ObjectIdFindNextMatch(): true if a
+ *           volume other than the one in the reference has the system mount
+ *           point in the reference (an OS_FreeRTOS_MountPointRef_t).
+ *
+ *-----------------------------------------------------------------*/
+// ref must stay non-const to match OS_ObjectMatchFunc_t
+// cppcheck-suppress constParameterCallback
+static bool OS_FreeRTOS_MountPointInUse(void *ref, const OS_object_token_t *token, const OS_common_record_t *obj)
+{
+    const OS_FreeRTOS_MountPointRef_t  *target = ref;
+    const OS_filesys_internal_record_t *other;
+
+    (void)obj;
+
+    if (token->obj_idx == target->self)
+    {
+        return false;
+    }
+
+    other = OS_OBJECT_TABLE_GET(OS_filesys_table, *token);
+
+    return strcmp(other->system_mountpt, target->mountpt) == 0;
+}
+
 /*----------------------------------------------------------------
  *
  *  Purpose: Implemented per internal OSAL API
@@ -99,12 +133,18 @@ void OS_FreeRTOS_LfsUnlock(void)
  *           fits what the port reserves for each open file, then names the
  *           directory of the volume: /<volume name>, unless a system mount
  *           point was given (OS_FileSysAddFixedMap). The name must be one
- *           path component, or the volume would resolve outside its directory.
+ *           path component that names a directory of its own, or the volume
+ *           would resolve outside its directory: "." is the root, which holds
+ *           the directories of all the volumes, and ".." is above it. It must
+ *           also not name the directory of another volume, or the two would
+ *           share their files.
  *
  *-----------------------------------------------------------------*/
 int32 OS_FileSysStartVolume_Impl(const OS_object_token_t *token)
 {
     OS_filesys_internal_record_t *filesys;
+    OS_FreeRTOS_MountPointRef_t   ref;
+    OS_object_token_t             other;
 
     if (OS_BSP_GenericFreeRTOSGlobal.StorageConfig->cache_size > OS_FREERTOS_LFS_FILE_CACHE_SIZE)
     {
@@ -114,7 +154,8 @@ int32 OS_FileSysStartVolume_Impl(const OS_object_token_t *token)
     filesys = OS_OBJECT_TABLE_GET(OS_filesys_table, *token);
     if (filesys->system_mountpt[0] == 0)
     {
-        if (filesys->volume_name[0] == 0 || strchr(filesys->volume_name, '/') != NULL)
+        if (filesys->volume_name[0] == 0 || strchr(filesys->volume_name, '/') != NULL
+            || strcmp(filesys->volume_name, ".") == 0 || strcmp(filesys->volume_name, "..") == 0)
         {
             return OS_FS_ERR_PATH_INVALID;
         }
@@ -122,6 +163,17 @@ int32 OS_FileSysStartVolume_Impl(const OS_object_token_t *token)
         filesys->system_mountpt[0] = '/';
         strncpy(&filesys->system_mountpt[1], filesys->volume_name, sizeof(filesys->system_mountpt) - 2);
         filesys->system_mountpt[sizeof(filesys->system_mountpt) - 1] = 0;
+
+        /* The global table lock is held until the volume is finalized, so the other volumes can not change here */
+        ref.mountpt    = filesys->system_mountpt;
+        ref.self       = token->obj_idx;
+        other.obj_type = OS_OBJECT_TYPE_OS_FILESYS;
+        other.obj_idx  = OSAL_INDEX_C(-1);
+        if (OS_ObjectIdFindNextMatch(OS_FreeRTOS_MountPointInUse, &ref, &other) == OS_SUCCESS)
+        {
+            filesys->system_mountpt[0] = 0;
+            return OS_FS_ERR_DRIVE_NOT_CREATED;
+        }
     }
 
     return OS_SUCCESS;

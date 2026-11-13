@@ -13,11 +13,13 @@
 #include <string.h>
 
 #include "utstubs.h"
+#include "utgenstub.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
 
 #include "osapi-error.h"
+#include "os-shared-idmap.h"
 
 #include "lfs.h"
 
@@ -162,4 +164,22 @@ lfs_ssize_t lfs_fs_size(lfs_t *lfs)
     }
 
     return UT_Stub_FsBlocksUsed;
+}
+
+/*
+ * Normally in osapi-idmap.c: walks the active records of one object type through a match function. Written like
+ * OSAL's own generated stubs, so a hook can read the match function and its argument by name and offer records
+ * to it; os-impl-filesys.c uses it to look for another volume with the same directory.
+ */
+int32 OS_ObjectIdFindNextMatch(OS_ObjectMatchFunc_t MatchFunc, void *arg, OS_object_token_t *token)
+{
+    UT_GenStub_SetupReturnBuffer(OS_ObjectIdFindNextMatch, int32);
+
+    UT_GenStub_AddParam(OS_ObjectIdFindNextMatch, OS_ObjectMatchFunc_t, MatchFunc);
+    UT_GenStub_AddParam(OS_ObjectIdFindNextMatch, void *, arg);
+    UT_GenStub_AddParam(OS_ObjectIdFindNextMatch, OS_object_token_t *, token);
+
+    UT_GenStub_Execute(OS_ObjectIdFindNextMatch, Basic, NULL);
+
+    return UT_GenStub_GetReturnValue(OS_ObjectIdFindNextMatch, int32);
 }
