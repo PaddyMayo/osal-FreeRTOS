@@ -35,6 +35,9 @@
 #define configIDLE_SHOULD_YIELD                 1
 #define configUSE_16_BIT_TICKS                  0
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
+/* The thread-local storage index where the port stashes the OSAL task ID, so OS_TaskGetId_Impl() can find it for
+ * the calling task. It must be below configNUM_THREAD_LOCAL_STORAGE_POINTERS. */
+#define OS_FREERTOS_TASK_ID_TLS_INDEX           0
 
 #if defined(OSAL_FREERTOS_CPU_CLOCK_HZ)
 #define configCPU_CLOCK_HZ OSAL_FREERTOS_CPU_CLOCK_HZ
