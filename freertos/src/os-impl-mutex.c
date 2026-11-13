@@ -24,7 +24,8 @@
  *          Takes and Gives that are already in.
  *
  *          A task deleted while it holds a mutex cannot give it back (only the
- *          holder can), so OS_FreeRTOS_MutexOwnerDied() orphans it: the gate is
+ *          holder can), so OS_FreeRTOS_MutexOwnerDied(), which OS_FreeRTOS_MutexInit()
+ *          registers for task death (see os-freertos.h), orphans it: the gate is
  *          closed, the Takes blocked on it are woken with an error, and Delete,
  *          which finds it held but closed, frees it.
  */
@@ -40,6 +41,20 @@
 #include "os-impl-mutex.h"
 
 OS_impl_mutex_internal_record_t OS_impl_mutex_table[OS_MAX_MUTEXES];
+
+static void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task);
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Registers OS_FreeRTOS_MutexOwnerDied() for task death. See
+ *           prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+int32 OS_FreeRTOS_MutexInit(void)
+{
+    return OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_MutexOwnerDied);
+}
 
 /*----------------------------------------------------------------
  *
@@ -201,9 +216,14 @@ int32 OS_MutSemTake_Impl(const OS_object_token_t *token)
 
 /*----------------------------------------------------------------
  *
- *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           Orphans the mutexes a task about to be deleted holds. See
- *           prototype in os-freertos.h.
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           The task death hook (see os-freertos.h): orphans the mutexes a
+ *           task about to be deleted holds, since it cannot give them back
+ *           (only the holder can). Each one's gate is closed, the Takes
+ *           blocked on it are woken with an error, and the call returns once
+ *           none is left in, so that nothing touches the holder when it goes.
+ *           OS_MutSemDelete() then frees an orphaned mutex, which it otherwise
+ *           refuses while a task holds it. Blocks, so not for interrupt context.
  *
  *           The task is suspended (or is the caller), so the set of mutexes
  *           it holds cannot change meanwhile. The gates are closed in one
@@ -215,7 +235,7 @@ int32 OS_MutSemTake_Impl(const OS_object_token_t *token)
  *           delete running at the same time may already have freed one.
  *
  *-----------------------------------------------------------------*/
-void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task)
+static void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task)
 {
     bool   orphaned[OS_MAX_MUTEXES];
     uint32 i;

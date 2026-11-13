@@ -32,8 +32,9 @@
  *
  *          A task deleted while it waits leaves a node on a stack that goes, and
  *          one deleted while it holds the mutex can never give it back, so
- *          OS_FreeRTOS_CondVarTaskDied() drops the node and orphans the mutex
- *          (see os-freertos.h).
+ *          OS_FreeRTOS_CondVarTaskDied(), which OS_FreeRTOS_CondVarInit() registers
+ *          for task death (see os-freertos.h), drops the node and orphans the
+ *          mutex.
  *
  *          The mutex is not recursive, and the calls cannot be made from an
  *          interrupt: the gate is a critical section.
@@ -50,6 +51,20 @@
 #include "os-impl-condvar.h"
 
 OS_impl_condvar_internal_record_t OS_impl_condvar_table[OS_MAX_CONDVARS];
+
+static void OS_FreeRTOS_CondVarTaskDied(TaskHandle_t task);
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Registers OS_FreeRTOS_CondVarTaskDied() for task death. See
+ *           prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+int32 OS_FreeRTOS_CondVarInit(void)
+{
+    return OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_CondVarTaskDied);
+}
 
 /*----------------------------------------------------------------
  *
@@ -507,9 +522,15 @@ int32 OS_CondVarTimedWait_Impl(const OS_object_token_t *token, const OS_time_t *
 
 /*----------------------------------------------------------------
  *
- *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           Drops the wait nodes of a task about to be deleted and orphans
- *           the mutexes it holds. See prototype in os-freertos.h.
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           The task death hook (see os-freertos.h): drops the wait nodes of
+ *           a task about to be deleted and orphans the mutexes it holds. A
+ *           task blocked in OS_CondVarWait() has a node on its stack in the
+ *           variable's wait list, which a later signal would follow into the
+ *           freed stack and notify a freed TCB: the node is unlinked. A mutex
+ *           the task holds is orphaned like any other: the gate is closed, the
+ *           calls blocked on it are woken with an error, and the call returns
+ *           once none is left in. Blocks, so not for interrupt context.
  *
  *           The task is suspended (or is the caller), so neither the nodes it
  *           has on the lists nor the mutexes it holds change meanwhile. Its
@@ -523,7 +544,7 @@ int32 OS_CondVarTimedWait_Impl(const OS_object_token_t *token, const OS_time_t *
  *           freed one.
  *
  *-----------------------------------------------------------------*/
-void OS_FreeRTOS_CondVarTaskDied(TaskHandle_t task)
+static void OS_FreeRTOS_CondVarTaskDied(TaskHandle_t task)
 {
     bool   orphaned[OS_MAX_CONDVARS];
     uint32 i;

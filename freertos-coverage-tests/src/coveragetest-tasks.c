@@ -57,6 +57,11 @@ extern configSTACK_DEPTH_TYPE UT_Stub_LastCreateStackDepth;
 
 extern void UT_Stub_ResetTLS(void);
 
+/* The port's task death notice and checkpoint hook, stand-ins in freertos-task-stubs.c */
+extern TaskHandle_t                 UT_Stub_LastDiedTask;
+extern uint32                       UT_Stub_DiedCountAtPend;
+extern OS_FreeRTOS_CheckpointHook_t UT_Stub_CheckpointHook;
+
 /* The TCB pool's semaphore, declared in freertos-task-stubs.c */
 extern StaticSemaphore_t *UT_Stub_LastCountingSemBuffer;
 extern UBaseType_t        UT_Stub_LastCountingSemMax;
@@ -122,9 +127,6 @@ void Test_OS_TaskCreate_Impl(void)
     OS_task_table[0].stack_size = sizeof(StackType_t) * 128;
     OS_task_table[0].priority   = 50;
 
-    /* an entry left marked by the task that held it before is cleared for the next one */
-    UT_TaskTest_SetPoolDoomed(0, true);
-
     /* OSAL_TASK_STACK_ALLOCATE -> waits for a pool entry, then pvPortMalloc(); stack owned by the port */
     OS_task_table[0].stack_pointer = OSAL_TASK_STACK_ALLOCATE;
     UtAssert_INT32_EQ(OS_TaskCreate_Impl(&token, 0), OS_SUCCESS);
@@ -132,7 +134,6 @@ void Test_OS_TaskCreate_Impl(void)
     UtAssert_True(UT_Stub_LastTakeTicks == UT_TaskTest_GetTcbWaitTicks(),
                   "waits for a free pool entry, but only for a bounded time");
     UtAssert_True(UT_TaskTest_GetPoolInUse(0), "first pool entry claimed");
-    UtAssert_True(!UT_TaskTest_GetPoolDoomed(0), "a new task is not marked as having deleted itself");
     UtAssert_StrCmp(UT_Stub_LastCreateName, "UnitTest", "task name passed through");
     UtAssert_UINT32_EQ(UT_Stub_LastCreateStackDepth, 128);
     UtAssert_STUB_COUNT(pvPortMalloc, 1);
@@ -220,10 +221,28 @@ void Test_OS_FreeRTOS_TaskInit(void)
     UtAssert_UINT32_EQ(UT_Stub_LastCountingSemMax, OS_MAX_TASKS);
     UtAssert_UINT32_EQ(UT_Stub_LastCountingSemInitial, OS_MAX_TASKS);
 
-    /* xSemaphoreCreateCountingStatic() failure -> OS_ERROR */
+    /* the port's checkpoint is given the hook that ends a task that deleted itself: it has the primitives
+     * drop what they keep for the calling task, hands it to the timer task and suspends it until it has gone */
+    UtAssert_STUB_COUNT(OS_FreeRTOS_SetCheckpointHook, 1);
+    UtAssert_True(UT_Stub_CheckpointHook != NULL, "a checkpoint hook is set");
+    UT_Stub_CheckpointHook();
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskDied, 1);
+    UtAssert_True(UT_Stub_LastDiedTask == UT_Stub_CurrentTaskHandle, "the primitives are told the calling task died");
+    UtAssert_UINT32_EQ(UT_Stub_DiedCountAtPend, 1);
+    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
+    UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
+    UtAssert_STUB_COUNT(vTaskSuspend, 1);
+
+    /* the timer task runs the handed function: the task is deleted from outside */
+    UT_Stub_LastDeletedHandle = NULL;
+    UT_Stub_LastPendedFunction(UT_Stub_LastPendedParameter, 0);
+    UtAssert_True(UT_Stub_LastDeletedHandle == UT_Stub_CurrentTaskHandle, "the timer task deletes the calling task");
+
+    /* xSemaphoreCreateCountingStatic() failure -> OS_ERROR, and the hook is not set again */
     UT_SetDeferredRetcode(UT_KEY(xSemaphoreCreateCountingStatic), 1, -1);
     UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_ERROR);
     UtAssert_STUB_COUNT(xSemaphoreCreateCountingStatic, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_SetCheckpointHook, 1);
 }
 
 void Test_OS_FreeRTOSTaskEntry(void)
@@ -248,18 +267,9 @@ void Test_OS_TaskDetach_Impl(void)
     UtAssert_INT32_EQ(OS_TaskDetach_Impl(&token), OS_SUCCESS);
 }
 
-/* Declared in freertos-tasks-stubs.c */
-extern TaskHandle_t UT_Stub_LastReleasedTask;
-extern TaskHandle_t UT_Stub_LastOwnerDiedTask;
-extern uint32       UT_Stub_OwnerDiedCountAtPend;
-extern TaskHandle_t UT_Stub_LastCondVarDiedTask;
-extern uint32       UT_Stub_CondVarDiedCountAtPend;
-
 /* Inside vTaskDelete(): how far the delete of another task had got, to check the order */
 static uint32 UT_SuspendsAtDelete;
-static uint32 UT_ReleasesAtDelete;
-static uint32 UT_OwnerDiedAtDelete;
-static uint32 UT_CondVarDiedAtDelete;
+static uint32 UT_DiedAtDelete;
 
 static int32 UT_DeleteSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
 {
@@ -267,10 +277,8 @@ static int32 UT_DeleteSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCou
     (void)CallCount;
     (void)Context;
 
-    UT_SuspendsAtDelete    = UT_GetStubCount(UT_KEY(vTaskSuspend));
-    UT_ReleasesAtDelete    = UT_GetStubCount(UT_KEY(OS_FreeRTOS_GateReleaseTask));
-    UT_OwnerDiedAtDelete   = UT_GetStubCount(UT_KEY(OS_FreeRTOS_MutexOwnerDied));
-    UT_CondVarDiedAtDelete = UT_GetStubCount(UT_KEY(OS_FreeRTOS_CondVarTaskDied));
+    UT_SuspendsAtDelete = UT_GetStubCount(UT_KEY(vTaskSuspend));
+    UT_DiedAtDelete     = UT_GetStubCount(UT_KEY(OS_FreeRTOS_TaskDied));
 
     return StubRetcode;
 }
@@ -281,82 +289,36 @@ void Test_OS_TaskDelete_Impl(void)
 
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, (TaskHandle_t)0x4242);
 
-    /* another task: it is frozen, its gate users are dropped, and only then does the kernel free it right away;
-     * the stack still goes through the portCLEAN_UP_TCB hook, not here */
+    /* another task: it is frozen, what the primitives keep for it is dropped, and only then does the kernel
+     * free it right away; the stack still goes through the portCLEAN_UP_TCB hook, not here */
     UT_SetHookFunction(UT_KEY(vTaskDelete), UT_DeleteSeesOrder, NULL);
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
     UtAssert_True(UT_Stub_LastSuspendedHandle == (TaskHandle_t)0x4242, "the task is suspended first");
-    UtAssert_True(UT_Stub_LastReleasedTask == (TaskHandle_t)0x4242, "its gate users are dropped");
+    UtAssert_True(UT_Stub_LastDiedTask == (TaskHandle_t)0x4242, "the primitives are told it died");
     UtAssert_UINT32_EQ(UT_SuspendsAtDelete, 1);
-    UtAssert_UINT32_EQ(UT_ReleasesAtDelete, 1);
-    UtAssert_True(UT_Stub_LastOwnerDiedTask == (TaskHandle_t)0x4242, "the mutexes it holds are orphaned");
-    UtAssert_UINT32_EQ(UT_OwnerDiedAtDelete, 1);
-    UtAssert_True(UT_Stub_LastCondVarDiedTask == (TaskHandle_t)0x4242,
-                  "its place in a condition variable's wait list is dropped");
-    UtAssert_UINT32_EQ(UT_CondVarDiedAtDelete, 1);
+    UtAssert_UINT32_EQ(UT_DiedAtDelete, 1);
     UtAssert_True(UT_Stub_LastDeletedHandle == (TaskHandle_t)0x4242, "vTaskDelete() called with task handle");
     UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
     UtAssert_STUB_COUNT(vPortFree, 0);
     UtAssert_UINT32_EQ(UT_Stub_FinalizeDeleteCount, 0);
+    UtAssert_NULL(pvTaskGetThreadLocalStoragePointer(NULL, OS_FREERTOS_TASK_DOOMED_TLS_INDEX));
 
     /* the calling task: it cannot be ended from inside its own delete, as OS_TaskDelete() must get
-     * back to release the slot and call the delete hook. It is only marked, and the call returns. */
+     * back to release the slot and call the delete hook. It is only marked, for the port's checkpoint
+     * to find at its next wait, and the call returns. */
     OS_task_table[0].delete_hook_pointer = UT_DeleteHook;
     UT_Stub_CurrentTaskHandle            = UT_TaskTest_GetPoolTcb(1);
     UT_TaskTest_SetImplTaskId(UT_INDEX_0, UT_Stub_CurrentTaskHandle);
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
     UtAssert_NULL(UT_TaskTest_GetImplTaskId(UT_INDEX_0));
-    UtAssert_True(UT_TaskTest_GetPoolDoomed(1), "the task is marked");
-    UtAssert_True(!UT_TaskTest_GetPoolDoomed(0), "and only that one");
+    UtAssert_True(pvTaskGetThreadLocalStoragePointer(NULL, OS_FREERTOS_TASK_DOOMED_TLS_INDEX) != NULL,
+                  "the task is marked");
     UtAssert_UINT32_EQ(UT_Stub_FinalizeDeleteCount, 0);
     UtAssert_UINT32_EQ(UT_DeleteHookCalls, 0);
     UtAssert_STUB_COUNT(vTaskSuspend, 1);
     UtAssert_STUB_COUNT(vTaskDelete, 1);
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 1);
-
-    /* a task the port did not create has no pool entry to mark: nothing happens */
-    UT_TaskTest_SetPoolDoomed(1, false);
-    UT_Stub_CurrentTaskHandle = (TaskHandle_t)0x1000;
-    UT_TaskTest_SetImplTaskId(UT_INDEX_0, UT_Stub_CurrentTaskHandle);
-    UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
-    UtAssert_True(!UT_TaskTest_GetPoolDoomed(1), "nothing is marked");
-    UtAssert_STUB_COUNT(vTaskDelete, 1);
-}
-
-void Test_OS_FreeRTOS_TaskCancelPoint(void)
-{
-    OS_object_token_t token = UT_TASK_TOKEN(0);
-
-    /* a task the port did not create (idle, timer service, BSP) is never ended */
-    UT_Stub_CurrentTaskHandle = (TaskHandle_t)0x1000;
-    OS_FreeRTOS_TaskCancelPoint();
-    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
-
-    /* a task that has not deleted itself carries on */
-    UT_Stub_CurrentTaskHandle = UT_TaskTest_GetPoolTcb(1);
-    OS_FreeRTOS_TaskCancelPoint();
-    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
-    UtAssert_STUB_COUNT(vTaskSuspend, 0);
-
-    /* one that has deleted itself is ended here, after OSAL finished the delete: it orphans its
-     * mutexes, is handed to the timer task and suspends until it has gone */
-    UT_TaskTest_SetImplTaskId(UT_INDEX_0, UT_Stub_CurrentTaskHandle);
-    UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
-    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
-
-    OS_FreeRTOS_TaskCancelPoint();
-    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 1);
-    UtAssert_True(UT_Stub_LastOwnerDiedTask == UT_Stub_CurrentTaskHandle, "the calling task orphans its own mutexes");
-    UtAssert_STUB_COUNT(OS_FreeRTOS_CondVarTaskDied, 1);
-    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
-    UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
-    UtAssert_STUB_COUNT(vTaskSuspend, 1);
-
-    /* the timer task runs the handed function: the task is deleted from outside */
-    UT_Stub_LastDeletedHandle = NULL;
-    UT_Stub_LastPendedFunction(UT_Stub_LastPendedParameter, 0);
-    UtAssert_True(UT_Stub_LastDeletedHandle == UT_Stub_CurrentTaskHandle, "the timer task deletes the calling task");
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskDied, 1);
 }
 
 void Test_OS_FreeRTOS_TaskCleanup(void)
@@ -412,9 +374,9 @@ void Test_OS_TaskExit_Impl(void)
 
     OS_TaskExit_Impl();
 
-    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 1);
-    UtAssert_True(UT_Stub_LastOwnerDiedTask == UT_Stub_CurrentTaskHandle, "the calling task orphans its own mutexes");
-    UtAssert_UINT32_EQ(UT_Stub_OwnerDiedCountAtPend, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskDied, 1);
+    UtAssert_True(UT_Stub_LastDiedTask == UT_Stub_CurrentTaskHandle, "the primitives are told the calling task died");
+    UtAssert_UINT32_EQ(UT_Stub_DiedCountAtPend, 1);
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
     UtAssert_True(UT_Stub_LastPendedParameter == UT_Stub_CurrentTaskHandle, "the calling task is handed over");
     UtAssert_STUB_COUNT(vTaskSuspend, 1);
@@ -430,14 +392,33 @@ void Test_OS_TaskExit_Impl(void)
     UT_Stub_LastDeletedHandle = (TaskHandle_t)0x1;
     OS_TaskExit_Impl();
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 2);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexOwnerDied, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskDied, 2);
     UtAssert_STUB_COUNT(vTaskSuspend, 1);
     UtAssert_NULL(UT_Stub_LastDeletedHandle);
+}
+
+/* Inside OS_FreeRTOS_Checkpoint(): how many delays had been made by its first pass, to check the order */
+static uint32 UT_DelaysAtFirstCheckpoint;
+
+static int32 UT_CheckpointSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+{
+    (void)UserObj;
+    (void)Context;
+
+    /* ut_assert counts from zero here */
+    if (CallCount == 0)
+    {
+        UT_DelaysAtFirstCheckpoint = UT_GetStubCount(UT_KEY(vTaskDelay));
+    }
+
+    return StubRetcode;
 }
 
 void Test_OS_TaskDelay_Impl(void)
 {
     /* the fake kernel runs at 100 Hz: 10 ms per tick */
+    UT_DelaysAtFirstCheckpoint = 99;
+    UT_SetHookFunction(UT_KEY(OS_FreeRTOS_Checkpoint), UT_CheckpointSeesOrder, NULL);
 
     /* zero stays zero: a yield, not a sleep */
     UtAssert_INT32_EQ(OS_TaskDelay_Impl(0), OS_SUCCESS);
@@ -453,15 +434,10 @@ void Test_OS_TaskDelay_Impl(void)
 
     UtAssert_INT32_EQ(OS_TaskDelay_Impl(250), OS_SUCCESS);
     UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 26);
-    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
 
-    /* a delay is a cancellation point: a task that deleted itself is ended before it sleeps (the
-     * stub returns from the suspend, so the delay that follows is seen as well) */
-    UT_Stub_CurrentTaskHandle = UT_TaskTest_GetPoolTcb(0);
-    UT_TaskTest_SetPoolDoomed(0, true);
-    UtAssert_INT32_EQ(OS_TaskDelay_Impl(10), OS_SUCCESS);
-    UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
-    UtAssert_STUB_COUNT(vTaskSuspend, 1);
+    /* a delay is a wait into the port: every one passed the port's checkpoint, before it slept */
+    UtAssert_STUB_COUNT(OS_FreeRTOS_Checkpoint, 4);
+    UtAssert_UINT32_EQ(UT_DelaysAtFirstCheckpoint, 0);
 }
 
 void Test_OS_TaskSetPriority_Impl(void)
@@ -559,7 +535,6 @@ void UtTest_Setup(void)
     ADD_TEST(OS_FreeRTOSTaskEntry);
     ADD_TEST(OS_TaskDetach_Impl);
     ADD_TEST(OS_TaskDelete_Impl);
-    ADD_TEST(OS_FreeRTOS_TaskCancelPoint);
     ADD_TEST(OS_FreeRTOS_TaskCleanup);
     ADD_TEST(OS_TaskExit_Impl);
     ADD_TEST(OS_TaskDelay_Impl);

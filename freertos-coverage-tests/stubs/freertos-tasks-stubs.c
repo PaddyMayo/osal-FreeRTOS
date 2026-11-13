@@ -21,6 +21,8 @@
 #include "semphr.h"
 #include "timers.h"
 
+#include "os-freertos.h"
+
 #define UT_STUB_TLS_SLOTS 4
 
 TaskHandle_t UT_Stub_CurrentTaskHandle = (TaskHandle_t)0x1000;
@@ -95,48 +97,38 @@ void vTaskDelete(TaskHandle_t xTaskToDelete)
 }
 
 /*
- * os-impl-tasks.c drops a deleted task's gate users through this; the gate lives
- * in os-impl-common.c and is covered there, and this runner links only the
- * tasks module.
+ * os-impl-tasks.c has the primitives drop what they keep for a task about to be
+ * deleted through this; it lives in os-impl-common.c and is covered there, and
+ * this runner links only the tasks module. The count of calls made by the time
+ * the task is handed to the timer task is kept, to check the order.
  */
-TaskHandle_t UT_Stub_LastReleasedTask;
+TaskHandle_t UT_Stub_LastDiedTask;
+uint32       UT_Stub_DiedCountAtPend;
 
-void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task)
+void OS_FreeRTOS_TaskDied(TaskHandle_t task)
 {
-    UT_Stub_LastReleasedTask = task;
+    UT_Stub_LastDiedTask = task;
 
-    UT_DEFAULT_IMPL(OS_FreeRTOS_GateReleaseTask);
+    UT_DEFAULT_IMPL(OS_FreeRTOS_TaskDied);
 }
 
 /*
- * os-impl-tasks.c orphans the mutexes a task about to be deleted holds through
- * this; it lives in os-impl-mutex.c and is covered there. The count of calls made
- * by the time the task is handed to the timer task is kept, to check the order.
+ * The port's checkpoint, and the hook os-impl-tasks.c sets for it, which is
+ * kept so a test can run it. Both live in os-impl-common.c and are covered
+ * there.
  */
-TaskHandle_t UT_Stub_LastOwnerDiedTask;
-uint32       UT_Stub_OwnerDiedCountAtPend;
+OS_FreeRTOS_CheckpointHook_t UT_Stub_CheckpointHook;
 
-void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task)
+void OS_FreeRTOS_SetCheckpointHook(OS_FreeRTOS_CheckpointHook_t hook)
 {
-    UT_Stub_LastOwnerDiedTask = task;
+    UT_Stub_CheckpointHook = hook;
 
-    UT_DEFAULT_IMPL(OS_FreeRTOS_MutexOwnerDied);
+    UT_DEFAULT_IMPL(OS_FreeRTOS_SetCheckpointHook);
 }
 
-/*
- * os-impl-tasks.c drops a deleted task's wait nodes, and orphans the condition
- * variable mutexes it holds, through this; it lives in os-impl-condvar.c and is
- * covered there. The count of calls made by the time the task is handed to the
- * timer task is kept, to check the order.
- */
-TaskHandle_t UT_Stub_LastCondVarDiedTask;
-uint32       UT_Stub_CondVarDiedCountAtPend;
-
-void OS_FreeRTOS_CondVarTaskDied(TaskHandle_t task)
+void OS_FreeRTOS_Checkpoint(void)
 {
-    UT_Stub_LastCondVarDiedTask = task;
-
-    UT_DEFAULT_IMPL(OS_FreeRTOS_CondVarTaskDied);
+    UT_DEFAULT_IMPL(OS_FreeRTOS_Checkpoint);
 }
 
 void vTaskSuspend(TaskHandle_t xTaskToSuspend)
@@ -159,8 +151,7 @@ BaseType_t xTimerPendFunctionCall(PendedFunction_t xFunctionToPend,
     UT_Stub_LastPendedFunction  = xFunctionToPend;
     UT_Stub_LastPendedParameter = pvParameter1;
 
-    UT_Stub_OwnerDiedCountAtPend   = UT_GetStubCount(UT_KEY(OS_FreeRTOS_MutexOwnerDied));
-    UT_Stub_CondVarDiedCountAtPend = UT_GetStubCount(UT_KEY(OS_FreeRTOS_CondVarTaskDied));
+    UT_Stub_DiedCountAtPend = UT_GetStubCount(UT_KEY(OS_FreeRTOS_TaskDied));
 
     status = UT_DEFAULT_IMPL(xTimerPendFunctionCall);
 

@@ -40,28 +40,29 @@
 #include "ut-adaptor-condvar.h"
 
 /* Captured stub call arguments and scripted values, declared in freertos-condvar-stubs.c */
-extern SemaphoreHandle_t     UT_Stub_CreatedCondVarMutex;
-extern SemaphoreHandle_t     UT_Stub_LastDeletedMutex;
-extern SemaphoreHandle_t     UT_Stub_LastTakeMutex;
-extern TickType_t            UT_Stub_LastTakeMutexTicks;
-extern SemaphoreHandle_t     UT_Stub_LastGiveMutex;
-extern SemaphoreHandle_t     UT_Stub_LastHolderQueried;
-extern void                  UT_Stub_SetMutexHolder(SemaphoreHandle_t handle, TaskHandle_t holder);
-extern void                  UT_Stub_ResetMutexHolders(void);
-extern void                  UT_Stub_SetTaskPriority(TaskHandle_t task, UBaseType_t priority);
-extern void                  UT_Stub_ResetTaskPriorities(void);
-extern UBaseType_t           UT_Stub_LastNotifyTakeIndex;
-extern BaseType_t            UT_Stub_LastNotifyTakeClear;
-extern TickType_t            UT_Stub_LastNotifyTakeTicks;
-extern TaskHandle_t          UT_Stub_NotifiedTasks[];
-extern uint32                UT_Stub_NotifiedCount;
-extern UBaseType_t           UT_Stub_LastNotifyIndex;
-extern void                  UT_Stub_ResetNotifyLog(void);
-extern uint32                UT_Stub_LastMsToTicksInput;
-extern TickType_t            UT_Stub_MsToTicksResult;
-extern OS_time_t             UT_Stub_LocalTime;
-extern TickType_t            UT_Stub_CondVarLastDelayTicks;
-extern const OS_impl_gate_t *UT_Stub_LastGate;
+extern SemaphoreHandle_t          UT_Stub_CreatedCondVarMutex;
+extern SemaphoreHandle_t          UT_Stub_LastDeletedMutex;
+extern SemaphoreHandle_t          UT_Stub_LastTakeMutex;
+extern TickType_t                 UT_Stub_LastTakeMutexTicks;
+extern SemaphoreHandle_t          UT_Stub_LastGiveMutex;
+extern SemaphoreHandle_t          UT_Stub_LastHolderQueried;
+extern void                       UT_Stub_SetMutexHolder(SemaphoreHandle_t handle, TaskHandle_t holder);
+extern void                       UT_Stub_ResetMutexHolders(void);
+extern void                       UT_Stub_SetTaskPriority(TaskHandle_t task, UBaseType_t priority);
+extern void                       UT_Stub_ResetTaskPriorities(void);
+extern UBaseType_t                UT_Stub_LastNotifyTakeIndex;
+extern BaseType_t                 UT_Stub_LastNotifyTakeClear;
+extern TickType_t                 UT_Stub_LastNotifyTakeTicks;
+extern TaskHandle_t               UT_Stub_NotifiedTasks[];
+extern uint32                     UT_Stub_NotifiedCount;
+extern UBaseType_t                UT_Stub_LastNotifyIndex;
+extern void                       UT_Stub_ResetNotifyLog(void);
+extern uint32                     UT_Stub_LastMsToTicksInput;
+extern TickType_t                 UT_Stub_MsToTicksResult;
+extern OS_time_t                  UT_Stub_LocalTime;
+extern TickType_t                 UT_Stub_CondVarLastDelayTicks;
+extern const OS_impl_gate_t      *UT_Stub_LastGate;
+extern OS_FreeRTOS_TaskDiedHook_t UT_Stub_TaskDiedHook;
 
 #define UT_CONDVAR_TOKEN(idx)                                                                                   \
     (OS_object_token_t)                                                                                         \
@@ -786,8 +787,23 @@ void Test_OS_CondVarTimedWait_Impl_NoClock(void)
     UtAssert_STUB_COUNT(OS_FreeRTOS_MsToTicks, 0);
 }
 
+void Test_OS_FreeRTOS_CondVarInit(void)
+{
+    /* registers, for task death, the hook that drops a dead task's wait nodes and orphans its mutexes */
+    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarInit(), OS_SUCCESS);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_OnTaskDied, 1);
+    UtAssert_True(UT_Stub_TaskDiedHook != NULL, "a task death hook is registered");
+
+    /* the registry refuses -> OS_ERROR, which fails OS_API_Init() */
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_OnTaskDied), 1, -1);
+    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarInit(), OS_ERROR);
+}
+
 void Test_OS_FreeRTOS_CondVarTaskDied(void)
 {
+    /* the hook the init registered is what runs when a task dies */
+    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarInit(), OS_SUCCESS);
+
     /* two condition variables exist; the others were never created and are skipped */
     UT_CondVarTest_SetImplMutex(UT_INDEX_0, UT_MUTEX);
     UT_CondVarTest_SetImplMutex(UT_INDEX_1, UT_OTHER_MUTEX);
@@ -803,7 +819,7 @@ void Test_OS_FreeRTOS_CondVarTaskDied(void)
     UT_WakeCalls = 0;
     UT_SetHookFunction(UT_KEY(OS_FreeRTOS_GateWake), UT_WakeReportsUsersLeaving, NULL);
 
-    OS_FreeRTOS_CondVarTaskDied(UT_TASK_A);
+    UT_Stub_TaskDiedHook(UT_TASK_A);
 
     /* every node of the dead task is gone, from the head, the middle and the end of lists, and the others stay */
     UtAssert_True(UT_CondVarTest_GetWaiters(UT_INDEX_0) == &UT_Waiters[1], "only the live task's node is left");
@@ -821,7 +837,7 @@ void Test_OS_FreeRTOS_CondVarTaskDied(void)
     UtAssert_True(UT_Stub_LastGate == UT_CondVarTest_GetImplGate(UT_INDEX_1), "the held mutex's condition variable");
 
     /* a task that waits on none and holds none -> nothing is closed or waited on, and the lists are as they were */
-    OS_FreeRTOS_CondVarTaskDied(UT_TASK_C);
+    UT_Stub_TaskDiedHook(UT_TASK_C);
     UtAssert_True(UT_CondVarTest_GetWaiters(UT_INDEX_0) == &UT_Waiters[1], "the live task's node is still there");
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateClose, 1);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 3);
@@ -885,6 +901,7 @@ void UtTest_Setup(void)
     ADD_TEST(OS_CondVarTimedWait_Impl_Past);
     ADD_TEST(OS_CondVarTimedWait_Impl_Far);
     ADD_TEST(OS_CondVarTimedWait_Impl_NoClock);
+    ADD_TEST(OS_FreeRTOS_CondVarInit);
     ADD_TEST(OS_FreeRTOS_CondVarTaskDied);
     ADD_TEST(OS_CondVarGetInfo_Impl);
 }
