@@ -103,6 +103,9 @@ bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_user_t *user)
 {
     bool admitted;
 
+    /* Every wait on a kernel object starts here: where a task that deleted itself is ended */
+    OS_FreeRTOS_TaskCancelPoint();
+
     taskENTER_CRITICAL();
     admitted = !gate->closed;
     if (admitted)

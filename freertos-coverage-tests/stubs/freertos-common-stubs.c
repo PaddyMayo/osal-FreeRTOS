@@ -116,6 +116,15 @@ int32 OS_FreeRTOS_TaskInit(void)
 }
 
 /*
+ * OS_FreeRTOS_GateEnter() makes the cancellation point a task that deleted
+ * itself is ended at; it lives in os-impl-tasks.c and is covered there.
+ */
+void OS_FreeRTOS_TaskCancelPoint(void)
+{
+    UT_DEFAULT_IMPL(OS_FreeRTOS_TaskCancelPoint);
+}
+
+/*
  * os-impl-common.c also calls these for the stream and file system object
  * types; they live in os-impl-files.c and os-impl-filesys.c and are covered
  * there.
