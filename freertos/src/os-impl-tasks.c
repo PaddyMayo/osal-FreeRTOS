@@ -21,13 +21,6 @@ static StaticSemaphore_t OS_FreeRTOS_TcbSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_TcbSem;
 
 /*
- * Index into the per-task thread-local storage array (see
- * configNUM_THREAD_LOCAL_STORAGE_POINTERS in FreeRTOSConfig.h) used to stash
- * the OSAL task ID so OS_TaskGetId_Impl() can look it up for the calling task.
- */
-#define OS_FREERTOS_TASK_ID_TLS_INDEX 0
-
-/*
  *********************************************************************************
  *          TASK API
  *********************************************************************************

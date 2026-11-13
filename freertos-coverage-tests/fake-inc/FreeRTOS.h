@@ -40,6 +40,9 @@ typedef struct
 #define configMINIMAL_STACK_SIZE        64
 #define configTIMER_TASK_STACK_DEPTH    (configMINIMAL_STACK_SIZE * 2)
 
+/* Mirrors generic-freertos/config/FreeRTOSConfig.h */
+#define OS_FREERTOS_TASK_ID_TLS_INDEX 0
+
 /* Two indexes: 0 for application code, 1 for the port's condition variables */
 #define configTASK_NOTIFICATION_ARRAY_ENTRIES 2
 
