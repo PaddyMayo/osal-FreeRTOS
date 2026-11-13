@@ -17,7 +17,32 @@
 #include "task.h"
 #include "semphr.h"
 
+#include "osapi-error.h"
+
 #include "os-freertos.h"
+
+/*
+ * The task death registry lives in os-impl-common.c and is covered there. The
+ * hook os-impl-mutex.c registers is kept, so a test can run it; a negative
+ * retcode makes the registration fail, as a full registry does.
+ */
+OS_FreeRTOS_TaskDiedHook_t UT_Stub_TaskDiedHook;
+
+int32 OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_TaskDiedHook_t hook)
+{
+    int32 status;
+
+    UT_Stub_TaskDiedHook = hook;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_OnTaskDied);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
+}
 
 /* Handle returned by a successful xSemaphoreCreateRecursiveMutex() */
 SemaphoreHandle_t UT_Stub_CreatedMutexHandle = (SemaphoreHandle_t)0x3000;

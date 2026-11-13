@@ -116,12 +116,55 @@ int32 OS_FreeRTOS_TaskInit(void)
 }
 
 /*
- * OS_FreeRTOS_GateEnter() makes the cancellation point a task that deleted
- * itself is ended at; it lives in os-impl-tasks.c and is covered there.
+ * The slot OS_FreeRTOS_Checkpoint() reads for the calling task: the test
+ * scripts what it holds, and the index read is kept to check it is the right
+ * one.
  */
-void OS_FreeRTOS_TaskCancelPoint(void)
+void *UT_Stub_CommonTLSValue;
+int   UT_Stub_LastTLSIndex = -1;
+
+void *pvTaskGetThreadLocalStoragePointer(TaskHandle_t xTaskToQuery, int xIndex)
 {
-    UT_DEFAULT_IMPL(OS_FreeRTOS_TaskCancelPoint);
+    (void)xTaskToQuery;
+
+    UT_Stub_LastTLSIndex = xIndex;
+
+    UT_DEFAULT_IMPL(pvTaskGetThreadLocalStoragePointer);
+
+    return UT_Stub_CommonTLSValue;
+}
+
+/*
+ * os-impl-common.c also calls these for the mutex and condition variable object
+ * types; they live in os-impl-mutex.c and os-impl-condvar.c and are covered
+ * there.
+ */
+int32 OS_FreeRTOS_MutexInit(void)
+{
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_MutexInit);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
+}
+
+int32 OS_FreeRTOS_CondVarInit(void)
+{
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_CondVarInit);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
 }
 
 /*

@@ -50,6 +50,7 @@ extern TickType_t                 UT_Stub_MutexLastDelayTicks;
 extern const OS_impl_gate_t      *UT_Stub_LastGate;
 extern OS_impl_gate_user_t       *UT_Stub_LastEnterUser;
 extern const OS_impl_gate_user_t *UT_Stub_LastLeaveUser;
+extern OS_FreeRTOS_TaskDiedHook_t UT_Stub_TaskDiedHook;
 
 #define UT_MUTEX_TOKEN(idx)                                                                              \
     (OS_object_token_t)                                                                                  \
@@ -208,11 +209,26 @@ void Test_OS_MutSemDelete_Impl_Orphaned(void)
     UtAssert_True(UT_MutexTest_GetImplMutexId(UT_INDEX_0) == NULL, "mutex handle cleared from impl table");
 }
 
+void Test_OS_FreeRTOS_MutexInit(void)
+{
+    /* registers, for task death, the hook that orphans a dead task's mutexes */
+    UtAssert_INT32_EQ(OS_FreeRTOS_MutexInit(), OS_SUCCESS);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_OnTaskDied, 1);
+    UtAssert_True(UT_Stub_TaskDiedHook != NULL, "a task death hook is registered");
+
+    /* the registry refuses -> OS_ERROR, which fails OS_API_Init() */
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_OnTaskDied), 1, -1);
+    UtAssert_INT32_EQ(OS_FreeRTOS_MutexInit(), OS_ERROR);
+}
+
 void Test_OS_MutexOwnerDied(void)
 {
     SemaphoreHandle_t free_mutex  = (SemaphoreHandle_t)0x5001;
     SemaphoreHandle_t dead_mutex  = (SemaphoreHandle_t)0x5002;
     SemaphoreHandle_t other_mutex = (SemaphoreHandle_t)0x5003;
+
+    /* the hook the init registered is what runs when a task dies */
+    UtAssert_INT32_EQ(OS_FreeRTOS_MutexInit(), OS_SUCCESS);
 
     /* three mutexes exist; the fourth slot was never created and is skipped */
     UT_MutexTest_SetImplMutexId(OSAL_INDEX_C(0), free_mutex);
@@ -225,7 +241,7 @@ void Test_OS_MutexOwnerDied(void)
     UT_WakeCalls = 0;
     UT_SetHookFunction(UT_KEY(OS_FreeRTOS_GateWake), UT_WakeReportsUsersLeaving, NULL);
 
-    OS_FreeRTOS_MutexOwnerDied(UT_HOLDER_TASK);
+    UT_Stub_TaskDiedHook(UT_HOLDER_TASK);
 
     /* only the mutex that task held was closed, woken and waited on */
     UtAssert_STUB_COUNT(xSemaphoreGetMutexHolder, 3);
@@ -237,7 +253,7 @@ void Test_OS_MutexOwnerDied(void)
                   "the dead task's mutex was the one closed");
 
     /* a task that holds none of them -> nothing is closed or waited on */
-    OS_FreeRTOS_MutexOwnerDied(UT_NO_MUTEX_TASK);
+    UT_Stub_TaskDiedHook(UT_NO_MUTEX_TASK);
     UtAssert_STUB_COUNT(xSemaphoreGetMutexHolder, 6);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateClose, 1);
     UtAssert_STUB_COUNT(OS_FreeRTOS_GateWake, 3);
@@ -372,6 +388,7 @@ void UtTest_Setup(void)
     ADD_TEST(OS_MutSemDelete_Impl_Drain);
     ADD_TEST(OS_MutSemDelete_Impl_Locked);
     ADD_TEST(OS_MutSemDelete_Impl_Orphaned);
+    ADD_TEST(OS_FreeRTOS_MutexInit);
     ADD_TEST(OS_MutexOwnerDied);
     ADD_TEST(OS_MutSemGive_Impl);
     ADD_TEST(OS_MutSemTake_Impl);
