@@ -108,6 +108,16 @@ void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task);
 /* Defined in os-impl-tasks.c. Creates the semaphore that counts free TCB pool entries. */
 int32 OS_FreeRTOS_TaskInit(void);
 
+/*
+ * Defined in os-impl-tasks.c. The port's cancellation point: a task that deleted itself
+ * with OS_TaskDelete() is not ended by that call, which has to return so OSAL can finish
+ * the delete and call the delete hook (the POSIX port leaves the thread running until its
+ * next cancellation point in the same way). Called where a task enters the port to wait
+ * (OS_FreeRTOS_GateEnter(), OS_TaskDelay_Impl()). Returns at once for any other task;
+ * for one that deleted itself it ends the task and does not return.
+ */
+void OS_FreeRTOS_TaskCancelPoint(void);
+
 /* Defined in os-impl-files.c. Clears the file handle table. Returns OS_SUCCESS. */
 int32 OS_FreeRTOS_FileInit(void);
 

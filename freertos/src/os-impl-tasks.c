@@ -109,6 +109,31 @@ int32 OS_FreeRTOS_TaskInit(void)
 /*----------------------------------------------------------------
  *
  *  Purpose: Local helper routine, not part of OSAL API.
+ *           Finds the pool entry a TCB belongs to, NULL for a TCB the port did
+ *           not create (idle, timer service).
+ *
+ *-----------------------------------------------------------------*/
+static OS_impl_task_tcb_t *OS_FreeRTOS_TcbToEntry(const void *tcb)
+{
+    uintptr_t offset;
+
+    /*
+     * The ones this port creates are the tcb members of the pool entries, so the
+     * entry follows from the address. The unsigned subtraction wraps for an address
+     * below the pool, leaving one range check for both ends.
+     */
+    offset = (uintptr_t)tcb - (uintptr_t)OS_impl_task_tcb_pool;
+    if (offset >= sizeof(OS_impl_task_tcb_pool))
+    {
+        return NULL;
+    }
+
+    return &OS_impl_task_tcb_pool[offset / sizeof(OS_impl_task_tcb_pool[0])];
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Local helper routine, not part of OSAL API.
  *           Frees the heap stack a pool entry holds, if any, then hands the
  *           entry back: marks it free and gives the semaphore that
  *           OS_TaskCreate_Impl waits on. Never blocks.
@@ -144,22 +169,16 @@ static void OS_FreeRTOS_TcbRelease(OS_impl_task_tcb_t *entry)
  *-----------------------------------------------------------------*/
 void OS_FreeRTOS_TaskCleanup(const void *tcb)
 {
-    uintptr_t offset;
+    OS_impl_task_tcb_t *entry;
 
-    /*
-     * The kernel only ever passes the address of a real TCB, and the ones this
-     * port creates are the tcb members of the pool entries, so the entry
-     * follows from the address. The unsigned subtraction wraps for an address
-     * below the pool, leaving one range check for both ends. TCBs the port did
-     * not create (idle, timer service) fall outside it.
-     */
-    offset = (uintptr_t)tcb - (uintptr_t)OS_impl_task_tcb_pool;
-    if (offset >= sizeof(OS_impl_task_tcb_pool))
+    /* The kernel only ever passes the address of a real TCB; the ones the port did not create fall outside the pool */
+    entry = OS_FreeRTOS_TcbToEntry(tcb);
+    if (entry == NULL)
     {
         return;
     }
 
-    OS_FreeRTOS_TcbRelease(&OS_impl_task_tcb_pool[offset / sizeof(OS_impl_task_tcb_pool[0])]);
+    OS_FreeRTOS_TcbRelease(entry);
 }
 
 /*----------------------------------------------------------------
@@ -232,6 +251,7 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
         {
             entry         = &OS_impl_task_tcb_pool[i];
             entry->in_use = true;
+            entry->doomed = false;
             break;
         }
     }
@@ -348,6 +368,24 @@ static void OS_FreeRTOS_DeleteSelf(void)
 
 /*----------------------------------------------------------------
  *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Ends the calling task if it deleted itself. See prototype in
+ *           os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_TaskCancelPoint(void)
+{
+    const OS_impl_task_tcb_t *entry;
+
+    entry = OS_FreeRTOS_TcbToEntry(xTaskGetCurrentTaskHandle());
+    if (entry != NULL && entry->doomed)
+    {
+        OS_FreeRTOS_DeleteSelf();
+    }
+}
+
+/*----------------------------------------------------------------
+ *
  *  Purpose: Implemented per internal OSAL API
  *           See prototype for argument/return detail
  *
@@ -364,29 +402,20 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
 
     if (handle == xTaskGetCurrentTaskHandle())
     {
-        const OS_task_internal_record_t *task;
-        OS_object_token_t                local_token;
-        osal_task_entry                  delete_hook;
+        OS_impl_task_tcb_t *entry;
 
         /*
-         * A task deleting itself never gets back out of the delete, so
-         * OS_TaskDelete() would never finish it or call the hook.
-         * Do both here, in the order it does: release the slot (and with it
-         * the lock held on it), then the hook, which must not run locked.
-         * The TCB is cleaned up later through portCLEAN_UP_TCB.
+         * A task cannot be ended from inside its own delete: that would never get back
+         * out to OS_TaskDelete(), which releases the slot and calls the delete hook once
+         * this returns. So the task is only marked, and goes at its next cancellation
+         * point, as a thread that cancels itself does on the POSIX port; see
+         * OS_FreeRTOS_TaskCancelPoint().
          */
-        task        = OS_OBJECT_TABLE_GET(OS_task_table, *token);
-        delete_hook = task->delete_hook_pointer;
-        local_token = *token;
-
-        (void)OS_ObjectIdFinalizeDelete(OS_SUCCESS, &local_token);
-
-        if (delete_hook != NULL)
+        entry = OS_FreeRTOS_TcbToEntry(handle);
+        if (entry != NULL)
         {
-            delete_hook();
+            entry->doomed = true;
         }
-
-        OS_FreeRTOS_DeleteSelf();
     }
     else
     {
@@ -430,6 +459,8 @@ void OS_TaskExit_Impl(void)
  *-----------------------------------------------------------------*/
 int32 OS_TaskDelay_Impl(uint32 millisecond)
 {
+    OS_FreeRTOS_TaskCancelPoint();
+
     vTaskDelay(OS_FreeRTOS_MsToTicks(millisecond));
 
     return OS_SUCCESS;

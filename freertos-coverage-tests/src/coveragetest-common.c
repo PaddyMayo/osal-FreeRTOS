@@ -132,6 +132,7 @@ void Test_Gate_Enter(void)
     UtAssert_True(first.gate == &gate, "first user points at the gate");
     UtAssert_True(second.gate == &gate, "second user points at the gate");
     UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskCancelPoint, 2);
 
     /* a closed gate refuses, and lists nothing */
     OS_FreeRTOS_GateClose(&gate);

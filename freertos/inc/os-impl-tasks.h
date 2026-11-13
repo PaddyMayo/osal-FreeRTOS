@@ -38,6 +38,7 @@ typedef struct
     StaticTask_t tcb;
     StackType_t *stack; /* heap stack the port allocated, NULL when the caller supplied one */
     bool         in_use;
+    bool         doomed; /* the task deleted itself and is ended at its next cancellation point */
 } OS_impl_task_tcb_t;
 
 /* Table where the OS object information is stored */

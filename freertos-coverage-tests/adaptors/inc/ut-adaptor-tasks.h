@@ -36,6 +36,8 @@ void         UT_TaskTest_SetPoolStack(uint32 pool_idx, StackType_t *stack);
 bool         UT_TaskTest_GetPoolInUse(uint32 pool_idx);
 void         UT_TaskTest_SetPoolInUse(uint32 pool_idx, bool in_use);
 void         UT_TaskTest_SetAllPoolInUse(void);
+bool         UT_TaskTest_GetPoolDoomed(uint32 pool_idx);
+void         UT_TaskTest_SetPoolDoomed(uint32 pool_idx, bool doomed);
 
 /* How long OS_TaskCreate_Impl() waits for a pool entry, in ticks */
 TickType_t UT_TaskTest_GetTcbWaitTicks(void);
