@@ -116,12 +116,36 @@ int32 OS_FreeRTOS_TaskInit(void)
 }
 
 /*
- * OS_FreeRTOS_GateEnter() makes the cancellation point a task that deleted
- * itself is ended at; it lives in os-impl-tasks.c and is covered there.
+ * os-impl-common.c also calls these for the mutex and condition variable object
+ * types; they live in os-impl-mutex.c and os-impl-condvar.c and are covered
+ * there.
  */
-void OS_FreeRTOS_TaskCancelPoint(void)
+int32 OS_FreeRTOS_MutexInit(void)
 {
-    UT_DEFAULT_IMPL(OS_FreeRTOS_TaskCancelPoint);
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_MutexInit);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
+}
+
+int32 OS_FreeRTOS_CondVarInit(void)
+{
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_CondVarInit);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
 }
 
 /*

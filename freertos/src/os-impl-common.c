@@ -27,6 +27,12 @@
 static StaticSemaphore_t OS_FreeRTOS_IdleSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_IdleSem;
 
+/* The task death hooks and the entry hooks, each in registration order; see os-freertos.h */
+static OS_FreeRTOS_TaskDiedHook_t OS_FreeRTOS_TaskDiedHooks[OS_FREERTOS_TASK_DIED_HOOKS];
+static uint32                     OS_FreeRTOS_TaskDiedHookCount;
+static OS_FreeRTOS_EnterHook_t    OS_FreeRTOS_EnterHooks[OS_FREERTOS_ENTER_HOOKS];
+static uint32                     OS_FreeRTOS_EnterHookCount;
+
 /*----------------------------------------------------------------
  *
  *  Purpose: Implemented per internal OSAL API
@@ -50,10 +56,24 @@ int32 OS_API_Impl_Init(osal_objtype_t idtype)
         return OS_FreeRTOS_FileSysInit();
     }
 
+    if (idtype == OS_OBJECT_TYPE_OS_MUTEX)
+    {
+        return OS_FreeRTOS_MutexInit();
+    }
+
+    if (idtype == OS_OBJECT_TYPE_OS_CONDVAR)
+    {
+        return OS_FreeRTOS_CondVarInit();
+    }
+
     if (idtype != OS_OBJECT_TYPE_UNDEFINED)
     {
         return OS_SUCCESS;
     }
+
+    /* OS_API_Init() calls this type first, so the hooks the later types register survive */
+    OS_FreeRTOS_TaskDiedHookCount = 0;
+    OS_FreeRTOS_EnterHookCount    = 0;
 
     OS_SharedGlobalVars.TicksPerSecond  = configTICK_RATE_HZ;
     OS_SharedGlobalVars.MicroSecPerTick = 1000000 / configTICK_RATE_HZ;
@@ -103,8 +123,8 @@ bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_user_t *user)
 {
     bool admitted;
 
-    /* Every wait on a kernel object starts here: where a task that deleted itself is ended */
-    OS_FreeRTOS_TaskCancelPoint();
+    /* Every wait on a kernel object starts here: where the modules' entry hooks run */
+    OS_FreeRTOS_Enter();
 
     taskENTER_CRITICAL();
     admitted = !gate->closed;
@@ -226,12 +246,12 @@ uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate)
 
 /*----------------------------------------------------------------
  *
- *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           Drops the nodes of a deleted task. See prototype in
- *           os-freertos.h.
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           Drops the nodes of a task about to be deleted, from every gate;
+ *           the first thing OS_FreeRTOS_TaskDied() does.
  *
  *-----------------------------------------------------------------*/
-void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task)
+static void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task)
 {
     OS_impl_gate_user_t **link;
 
@@ -249,4 +269,76 @@ void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task)
         }
     }
     taskEXIT_CRITICAL();
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+int32 OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_TaskDiedHook_t hook)
+{
+    if (OS_FreeRTOS_TaskDiedHookCount >= OS_FREERTOS_TASK_DIED_HOOKS)
+    {
+        return OS_ERROR;
+    }
+
+    OS_FreeRTOS_TaskDiedHooks[OS_FreeRTOS_TaskDiedHookCount] = hook;
+    ++OS_FreeRTOS_TaskDiedHookCount;
+
+    return OS_SUCCESS;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_TaskDied(TaskHandle_t task)
+{
+    uint32 i;
+
+    OS_FreeRTOS_GateReleaseTask(task);
+
+    for (i = 0; i < OS_FreeRTOS_TaskDiedHookCount; ++i)
+    {
+        OS_FreeRTOS_TaskDiedHooks[i](task);
+    }
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+int32 OS_FreeRTOS_OnEnter(OS_FreeRTOS_EnterHook_t hook)
+{
+    if (OS_FreeRTOS_EnterHookCount >= OS_FREERTOS_ENTER_HOOKS)
+    {
+        return OS_ERROR;
+    }
+
+    OS_FreeRTOS_EnterHooks[OS_FreeRTOS_EnterHookCount] = hook;
+    ++OS_FreeRTOS_EnterHookCount;
+
+    return OS_SUCCESS;
+}
+
+/*----------------------------------------------------------------
+ *
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           See prototype in os-freertos.h.
+ *
+ *-----------------------------------------------------------------*/
+void OS_FreeRTOS_Enter(void)
+{
+    uint32 i;
+
+    for (i = 0; i < OS_FreeRTOS_EnterHookCount; ++i)
+    {
+        OS_FreeRTOS_EnterHooks[i]();
+    }
 }

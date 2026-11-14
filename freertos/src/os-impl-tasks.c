@@ -20,6 +20,8 @@ OS_impl_task_tcb_t             OS_impl_task_tcb_pool[OS_MAX_TASKS];
 static StaticSemaphore_t OS_FreeRTOS_TcbSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_TcbSem;
 
+static void OS_FreeRTOS_TaskEntered(void);
+
 /*
  *********************************************************************************
  *          TASK API
@@ -85,7 +87,8 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
  *
  *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Creates the semaphore that counts the TCB pool entries not in
- *           use. See prototype in os-freertos.h.
+ *           use, and registers the entry hook that ends a task that
+ *           deleted itself. See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
 int32 OS_FreeRTOS_TaskInit(void)
@@ -96,7 +99,7 @@ int32 OS_FreeRTOS_TaskInit(void)
         return OS_ERROR;
     }
 
-    return OS_SUCCESS;
+    return OS_FreeRTOS_OnEnter(OS_FreeRTOS_TaskEntered);
 }
 
 /*----------------------------------------------------------------
@@ -328,14 +331,14 @@ static void OS_FreeRTOS_DeleteHandedOver(void *pvParameter1, uint32_t ulParamete
  *           off the CPU: the timer task, which runs at the highest priority,
  *           is asked to delete it, and it suspends itself until that
  *           happens. If the timer queue is full it deletes itself, and the
- *           idle task frees the TCB. Never returns.
+ *           idle task frees the TCB. What OS_FreeRTOS_TaskEntered() does for a
+ *           task that deleted itself, and OS_TaskExit_Impl() does. Never returns.
  *
  *-----------------------------------------------------------------*/
 static void OS_FreeRTOS_DeleteSelf(void)
 {
-    /* It cannot give its mutexes back once it is gone: orphan the ones it still holds, condition variables' too */
-    OS_FreeRTOS_MutexOwnerDied(xTaskGetCurrentTaskHandle());
-    OS_FreeRTOS_CondVarTaskDied(xTaskGetCurrentTaskHandle());
+    /* Whatever the primitives keep for it (mutexes it holds, nodes on its stack) must go before it does */
+    OS_FreeRTOS_TaskDied(xTaskGetCurrentTaskHandle());
 
     if (xTimerPendFunctionCall(OS_FreeRTOS_DeleteHandedOver, xTaskGetCurrentTaskHandle(), 0, 0) == pdTRUE)
     {
@@ -361,12 +364,16 @@ static void OS_FreeRTOS_DeleteSelf(void)
 
 /*----------------------------------------------------------------
  *
- *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           Ends the calling task if it deleted itself. See prototype in
- *           os-freertos.h.
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           The entry hook this module registers (see os-freertos.h): ends
+ *           the calling task if it deleted itself with OS_TaskDelete(), which
+ *           only marked it. Returns at once for any other task, including
+ *           the ones the port did not create (idle, timer service). The
+ *           POSIX port leaves a thread that cancels itself running until its
+ *           next cancellation point in the same way.
  *
  *-----------------------------------------------------------------*/
-void OS_FreeRTOS_TaskCancelPoint(void)
+static void OS_FreeRTOS_TaskEntered(void)
 {
     const OS_impl_task_tcb_t *entry;
 
@@ -400,9 +407,9 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
         /*
          * A task cannot be ended from inside its own delete: that would never get back
          * out to OS_TaskDelete(), which releases the slot and calls the delete hook once
-         * this returns. So the task is only marked, and goes at its next cancellation
-         * point, as a thread that cancels itself does on the POSIX port; see
-         * OS_FreeRTOS_TaskCancelPoint().
+         * this returns. So the task is only marked, and goes at its next wait, where the
+         * entry hook OS_FreeRTOS_TaskEntered() finds the mark. A task the port did not
+         * create has no entry to mark.
          */
         entry = OS_FreeRTOS_TcbToEntry(handle);
         if (entry != NULL)
@@ -413,20 +420,15 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
     else
     {
         /*
-         * Freeze it first, so it cannot run on and enter a gate again, then drop the
-         * gate users it leaves behind: a task deleted in the middle of a queue Get or
-         * a mutex Take never leaves, and its nodes live on a stack that is about to go.
-         * It cannot give back the mutexes it holds either, so those are orphaned, which
-         * wakes whoever waits on them; that must finish before the task, and its TCB,
-         * go. A task deleted while it waits on a condition variable leaves a node on its
-         * stack in that variable's wait list, which the next signal would follow into
-         * the freed stack; the same call drops it, and orphans the condition variables'
-         * mutexes the task holds.
+         * Freeze it first, so it cannot run on and enter a gate again, then drop what
+         * the primitives keep for it (see OS_FreeRTOS_TaskDied()): a task deleted in the
+         * middle of a queue Get or a mutex Take never leaves, and its nodes live on a
+         * stack that is about to go; it cannot give back the mutexes it holds either, so
+         * those are orphaned, which wakes whoever waits on them, and that must finish
+         * before the task, and its TCB, go.
          */
         vTaskSuspend(handle);
-        OS_FreeRTOS_GateReleaseTask(handle);
-        OS_FreeRTOS_MutexOwnerDied(handle);
-        OS_FreeRTOS_CondVarTaskDied(handle);
+        OS_FreeRTOS_TaskDied(handle);
         vTaskDelete(handle);
     }
 
@@ -452,7 +454,7 @@ void OS_TaskExit_Impl(void)
  *-----------------------------------------------------------------*/
 int32 OS_TaskDelay_Impl(uint32 millisecond)
 {
-    OS_FreeRTOS_TaskCancelPoint();
+    OS_FreeRTOS_Enter();
 
     vTaskDelay(OS_FreeRTOS_MsToTicks(millisecond));
 

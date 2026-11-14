@@ -27,6 +27,29 @@
  *   The gate holds no kernel handle: each object keeps its own, typed, beside
  *   it. Reading that handle after a successful Enter is safe, because the
  *   delete cannot get past its wait while the caller is counted.
+ *
+ *   Task death
+ *   ----------
+ *   A primitive that keeps per-task state (a gate node on the task's stack, a
+ *   mutex the task holds) must drop it before the task goes, and a task that
+ *   deleted itself must be ended somewhere the kernel can be entered, i.e. at
+ *   its next wait. Neither the task module nor the primitives know each other:
+ *   both go through os-impl-common.c.
+ *
+ *     - a primitive registers a hook with OS_FreeRTOS_OnTaskDied() from its
+ *       init. The task module calls OS_FreeRTOS_TaskDied() once for a task
+ *       about to be deleted, which drops the task's gate nodes and then runs
+ *       the hooks in the order they were registered, which is the order
+ *       OS_API_Impl_Init() is called in (osapi-idmap.h: mutexes before
+ *       condition variables);
+ *     - a module registers a hook with OS_FreeRTOS_OnEnter() from its init, to
+ *       run as a task enters a wait into the port. Every wait calls
+ *       OS_FreeRTOS_Enter(), which runs the hooks in the order they were
+ *       registered: OS_FreeRTOS_GateEnter() for a wait on an object, and
+ *       OS_TaskDelay_Impl() for one on time. The task module registers the
+ *       hook that ends a task that deleted itself, which it only marks in
+ *       OS_TaskDelete_Impl(): that call has to return so OSAL can finish the
+ *       delete. Common knows nothing of what a hook does.
  */
 
 #ifndef OS_FREERTOS_H
@@ -92,12 +115,50 @@ bool OS_FreeRTOS_GateIsClosed(const OS_impl_gate_t *gate);
 uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate);
 
 /*
- * Drops every node of a task that is about to be deleted, from every gate. A
- * task deleted mid-call never reaches Leave, and its nodes would otherwise
- * stay on the list, counted as users and pointing into a stack that is gone.
- * The task must be suspended first, so that it cannot enter a gate again.
+ * Task death; see the file comment. A hook may block (it waits for the tasks
+ * it wakes to leave), so none of this is for interrupt context.
  */
-void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task);
+typedef void (*OS_FreeRTOS_TaskDiedHook_t)(TaskHandle_t task);
+
+/* How many hooks OS_FreeRTOS_OnTaskDied() takes: one per primitive that keeps per-task state */
+#define OS_FREERTOS_TASK_DIED_HOOKS 2
+
+/*
+ * Registers a hook that OS_FreeRTOS_TaskDied() runs, after those registered
+ * before it. Returns OS_SUCCESS, or OS_ERROR once OS_FREERTOS_TASK_DIED_HOOKS
+ * are registered, which fails the init: raise the count for a new primitive.
+ */
+int32 OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_TaskDiedHook_t hook);
+
+/*
+ * Called by the task module for a task about to be deleted, before it is.
+ * The task must be suspended first (or be the caller), so that it cannot
+ * enter a gate again. Drops every node of the task from every gate (a task
+ * deleted mid-call never reaches Leave, and its nodes would otherwise stay on
+ * the list, counted as users and pointing into a stack that is gone), then
+ * runs the registered hooks in order.
+ */
+void OS_FreeRTOS_TaskDied(TaskHandle_t task);
+
+typedef void (*OS_FreeRTOS_EnterHook_t)(void);
+
+/* How many hooks OS_FreeRTOS_OnEnter() takes: one per module that acts as a task enters a wait */
+#define OS_FREERTOS_ENTER_HOOKS 1
+
+/*
+ * Registers a hook that OS_FreeRTOS_Enter() runs, after those registered before
+ * it. A hook runs in the task that is entering the wait, and may end it, in
+ * which case it does not return. Returns OS_SUCCESS, or OS_ERROR once
+ * OS_FREERTOS_ENTER_HOOKS are registered, which fails the init: raise the count
+ * for a new hook.
+ */
+int32 OS_FreeRTOS_OnEnter(OS_FreeRTOS_EnterHook_t hook);
+
+/*
+ * Called as a task enters a wait into the port (OS_FreeRTOS_GateEnter(),
+ * OS_TaskDelay_Impl()), before it blocks: runs the registered hooks in order.
+ */
+void OS_FreeRTOS_Enter(void);
 
 /*
  * The init hooks OS_API_Impl_Init() in os-impl-common.c calls, each defined by
@@ -105,18 +166,26 @@ void OS_FreeRTOS_GateReleaseTask(TaskHandle_t task);
  * OS_Posix_*API_Impl_Init the same way).
  */
 
-/* Defined in os-impl-tasks.c. Creates the semaphore that counts free TCB pool entries. */
+/*
+ * Defined in os-impl-tasks.c. Creates the semaphore that counts free TCB pool
+ * entries and registers the entry hook that ends a task that deleted itself.
+ * Returns OS_SUCCESS, or OS_ERROR if the semaphore could not be created or the
+ * hook could not be registered.
+ */
 int32 OS_FreeRTOS_TaskInit(void);
 
 /*
- * Defined in os-impl-tasks.c. The port's cancellation point: a task that deleted itself
- * with OS_TaskDelete() is not ended by that call, which has to return so OSAL can finish
- * the delete and call the delete hook (the POSIX port leaves the thread running until its
- * next cancellation point in the same way). Called where a task enters the port to wait
- * (OS_FreeRTOS_GateEnter(), OS_TaskDelay_Impl()). Returns at once for any other task;
- * for one that deleted itself it ends the task and does not return.
+ * Defined in os-impl-mutex.c. Registers the task death hook that orphans the
+ * mutexes a dead task held. Returns what OS_FreeRTOS_OnTaskDied() does.
  */
-void OS_FreeRTOS_TaskCancelPoint(void);
+int32 OS_FreeRTOS_MutexInit(void);
+
+/*
+ * Defined in os-impl-condvar.c. Registers the task death hook that drops a
+ * dead task's wait nodes and orphans the condition variable mutexes it held.
+ * Returns what OS_FreeRTOS_OnTaskDied() does.
+ */
+int32 OS_FreeRTOS_CondVarInit(void);
 
 /* Defined in os-impl-files.c. Clears the file handle table. Returns OS_SUCCESS. */
 int32 OS_FreeRTOS_FileInit(void);
@@ -138,28 +207,5 @@ int32 OS_FreeRTOS_FileSysInit(void);
  * pdMS_TO_TICKS() directly.
  */
 TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond);
-
-/*
- * Defined in os-impl-mutex.c. Called for a task about to be deleted, before it
- * is, for the mutexes it holds: it cannot give them back (only the holder can),
- * so each is orphaned. The gate is closed, the Takes blocked on it are woken
- * with an error, and the call returns once none is left in, so that nothing
- * touches the holder when it goes. OS_MutSemDelete() then frees an orphaned
- * mutex, which it otherwise refuses while a task holds it. Blocks, so it is not
- * for interrupt context.
- */
-void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task);
-
-/*
- * Defined in os-impl-condvar.c. Called for a task about to be deleted, before it
- * is, right after OS_FreeRTOS_MutexOwnerDied(), for the condition variables. A
- * task blocked in OS_CondVarWait() has a node on its stack in the variable's wait
- * list, which a later signal would follow into the freed stack and notify a freed
- * TCB: the node is unlinked. A condition variable's mutex that the task holds is
- * orphaned like any other: the gate is closed, the calls blocked on it are woken
- * with an error, and the call returns once none is left in. The task must be
- * suspended first (or be the caller). Blocks, so it is not for interrupt context.
- */
-void OS_FreeRTOS_CondVarTaskDied(TaskHandle_t task);
 
 #endif /* OS_FREERTOS_H */
