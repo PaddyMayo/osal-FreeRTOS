@@ -21,6 +21,8 @@
 #include "semphr.h"
 #include "timers.h"
 
+#include "osapi-error.h"
+
 #include "os-freertos.h"
 
 #define UT_STUB_TLS_SLOTS 4
@@ -113,24 +115,32 @@ void OS_FreeRTOS_TaskDied(TaskHandle_t task)
 }
 
 /*
- * The hook os-impl-tasks.c sets for the port's checkpoint, kept so a test can
- * run it. The checkpoint, and the wait on time that passes it, live in
- * os-impl-common.c and are covered there.
+ * The port's entry registry lives in os-impl-common.c and is covered there. The
+ * hook os-impl-tasks.c registers is kept, so a test can run it; a negative
+ * retcode makes the registration fail, as a full registry does. An entry runs
+ * no hooks here: the delay's order against it is checked from a hook on this stub.
  */
-OS_FreeRTOS_CheckpointHook_t UT_Stub_CheckpointHook;
+OS_FreeRTOS_EnterHook_t UT_Stub_EnterHook;
 
-void OS_FreeRTOS_SetCheckpointHook(OS_FreeRTOS_CheckpointHook_t hook)
+int32 OS_FreeRTOS_OnEnter(OS_FreeRTOS_EnterHook_t hook)
 {
-    UT_Stub_CheckpointHook = hook;
+    int32 status;
 
-    UT_DEFAULT_IMPL(OS_FreeRTOS_SetCheckpointHook);
+    UT_Stub_EnterHook = hook;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_OnEnter);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
 }
 
-void OS_FreeRTOS_Delay(TickType_t ticks)
+void OS_FreeRTOS_Enter(void)
 {
-    UT_Stub_LastDelayTicks = ticks;
-
-    UT_DEFAULT_IMPL(OS_FreeRTOS_Delay);
+    UT_DEFAULT_IMPL(OS_FreeRTOS_Enter);
 }
 
 void vTaskSuspend(TaskHandle_t xTaskToSuspend)
@@ -163,6 +173,13 @@ BaseType_t xTimerPendFunctionCall(PendedFunction_t xFunctionToPend,
     }
 
     return pdTRUE;
+}
+
+void vTaskDelay(TickType_t xTicksToDelay)
+{
+    UT_Stub_LastDelayTicks = xTicksToDelay;
+
+    UT_DEFAULT_IMPL(vTaskDelay);
 }
 
 void vTaskEnterCritical(void)

@@ -36,9 +36,14 @@ extern StaticSemaphore_t *UT_Stub_LastCreateSemBuffer;
 extern SemaphoreHandle_t  UT_Stub_LastTakeSem;
 extern TickType_t         UT_Stub_LastTakeTicks;
 extern SemaphoreHandle_t  UT_Stub_LastGiveSem;
-extern void              *UT_Stub_CommonTLSValue;
-extern int                UT_Stub_LastTLSIndex;
-extern TickType_t         UT_Stub_CommonLastDelayTicks;
+
+/* An entry hook, counting the entries it ran for */
+static uint32 UT_EnterHookCalls;
+
+static void UT_CountEnter(void)
+{
+    ++UT_EnterHookCalls;
+}
 
 /*
 **********************************************************************************
@@ -141,6 +146,11 @@ void Test_Gate_Enter(void)
     memset(&gate, 0, sizeof(gate));
     memset(&refused, 0, sizeof(refused));
 
+    /* every Enter is a wait entering the port: the entry hooks run for it */
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
+    UT_EnterHookCalls = 0;
+    UtAssert_INT32_EQ(OS_FreeRTOS_OnEnter(UT_CountEnter), OS_SUCCESS);
+
     /* an open gate admits a caller and lists it under the calling task and this gate */
     UT_Stub_CommonCurrentTask = UT_TASK_1;
     UtAssert_True(OS_FreeRTOS_GateEnter(&gate, &first), "open gate admits a caller");
@@ -151,8 +161,7 @@ void Test_Gate_Enter(void)
     UtAssert_True(first.gate == &gate, "first user points at the gate");
     UtAssert_True(second.gate == &gate, "second user points at the gate");
     UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 2);
-    /* each Enter passed the port's checkpoint, which read the caller's doomed slot */
-    UtAssert_STUB_COUNT(pvTaskGetThreadLocalStoragePointer, 2);
+    UtAssert_UINT32_EQ(UT_EnterHookCalls, 2);
 
     /* a closed gate refuses, and lists nothing */
     OS_FreeRTOS_GateClose(&gate);
@@ -339,63 +348,31 @@ void Test_TaskDied_Hooks(void)
     UtAssert_UINT32_EQ(UT_HookCalls, OS_FREERTOS_TASK_DIED_HOOKS);
 }
 
-static uint32 UT_CheckpointHookCalls;
-
-static void UT_CheckpointHook(void)
+void Test_Enter_Hooks(void)
 {
-    ++UT_CheckpointHookCalls;
-}
+    uint32 i;
 
-void Test_Checkpoint(void)
-{
-    UT_CheckpointHookCalls = 0;
+    UT_EnterHookCalls = 0;
 
-    /* init clears the hook; a task whose doomed slot is clear passes, hook or no hook */
+    /* the registry is cleared by the init of the type OS_API_Init() starts with; with no hook, an entry does nothing */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
-    UT_Stub_CommonTLSValue = NULL;
-    OS_FreeRTOS_Checkpoint();
-    UtAssert_INT32_EQ(UT_Stub_LastTLSIndex, OS_FREERTOS_TASK_DOOMED_TLS_INDEX);
+    OS_FreeRTOS_Enter();
+    UtAssert_UINT32_EQ(UT_EnterHookCalls, 0);
 
-    OS_FreeRTOS_SetCheckpointHook(UT_CheckpointHook);
-    OS_FreeRTOS_Checkpoint();
-    UtAssert_UINT32_EQ(UT_CheckpointHookCalls, 0);
+    /* registered hooks run on each entry; one more than the registry takes is refused, failing its init */
+    for (i = 0; i < OS_FREERTOS_ENTER_HOOKS; ++i)
+    {
+        UtAssert_INT32_EQ(OS_FreeRTOS_OnEnter(UT_CountEnter), OS_SUCCESS);
+    }
+    UtAssert_INT32_EQ(OS_FreeRTOS_OnEnter(UT_CountEnter), OS_ERROR);
 
-    /* one whose slot is set is ended by the hook (which, here, returns) */
-    UT_Stub_CommonTLSValue = UT_TASK_1;
-    OS_FreeRTOS_Checkpoint();
-    UtAssert_UINT32_EQ(UT_CheckpointHookCalls, 1);
-    UtAssert_STUB_COUNT(pvTaskGetThreadLocalStoragePointer, 3);
-}
+    OS_FreeRTOS_Enter();
+    UtAssert_UINT32_EQ(UT_EnterHookCalls, OS_FREERTOS_ENTER_HOOKS);
 
-/* Inside the checkpoint hook: how many kernel delays had been made, to check the order */
-static uint32 UT_DelaysAtHook;
-
-static void UT_CheckpointHookSeesDelays(void)
-{
-    UT_DelaysAtHook = UT_GetStubCount(UT_KEY(vTaskDelay));
-}
-
-void Test_Delay(void)
-{
+    /* init clears the registry: nothing runs until something registers again */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
-    OS_FreeRTOS_SetCheckpointHook(UT_CheckpointHookSeesDelays);
-
-    /* a task whose doomed slot is clear sleeps for what it asked, zero included */
-    UT_Stub_CommonTLSValue = NULL;
-    OS_FreeRTOS_Delay(0);
-    UtAssert_STUB_COUNT(vTaskDelay, 1);
-    UtAssert_UINT32_EQ(UT_Stub_CommonLastDelayTicks, 0);
-    OS_FreeRTOS_Delay(26);
-    UtAssert_STUB_COUNT(vTaskDelay, 2);
-    UtAssert_UINT32_EQ(UT_Stub_CommonLastDelayTicks, 26);
-    UtAssert_INT32_EQ(UT_Stub_LastTLSIndex, OS_FREERTOS_TASK_DOOMED_TLS_INDEX);
-
-    /* one whose slot is set is ended by the hook before it sleeps (the hook returns here, so the sleep follows) */
-    UT_DelaysAtHook        = 99;
-    UT_Stub_CommonTLSValue = UT_TASK_1;
-    OS_FreeRTOS_Delay(1);
-    UtAssert_UINT32_EQ(UT_DelaysAtHook, 2);
-    UtAssert_STUB_COUNT(vTaskDelay, 3);
+    OS_FreeRTOS_Enter();
+    UtAssert_UINT32_EQ(UT_EnterHookCalls, OS_FREERTOS_ENTER_HOOKS);
 }
 
 /*
@@ -411,8 +388,6 @@ void Osapi_Test_Setup(void)
     UT_Stub_LastGiveSem         = NULL;
     UT_Stub_CommonCurrentTask   = (TaskHandle_t)0x7000;
     UT_Stub_LastAbortedTask     = NULL;
-    UT_Stub_CommonTLSValue      = NULL;
-    UT_Stub_LastTLSIndex        = -1;
 }
 
 void Osapi_Test_Teardown(void)
@@ -432,6 +407,5 @@ void UtTest_Setup(void)
     ADD_TEST(Gate_Wake);
     ADD_TEST(Gate_ReleaseTask);
     ADD_TEST(TaskDied_Hooks);
-    ADD_TEST(Checkpoint);
-    ADD_TEST(Delay);
+    ADD_TEST(Enter_Hooks);
 }

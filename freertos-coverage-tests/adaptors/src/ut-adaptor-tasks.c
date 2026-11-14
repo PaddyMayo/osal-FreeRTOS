@@ -59,6 +59,16 @@ void UT_TaskTest_SetPoolInUse(uint32 pool_idx, bool in_use)
     OS_impl_task_tcb_pool[pool_idx].in_use = in_use;
 }
 
+bool UT_TaskTest_GetPoolDoomed(uint32 pool_idx)
+{
+    return OS_impl_task_tcb_pool[pool_idx].doomed;
+}
+
+void UT_TaskTest_SetPoolDoomed(uint32 pool_idx, bool doomed)
+{
+    OS_impl_task_tcb_pool[pool_idx].doomed = doomed;
+}
+
 void UT_TaskTest_SetAllPoolInUse(void)
 {
     for (uint32 i = 0; i < OS_MAX_TASKS; ++i)

@@ -86,16 +86,6 @@ BaseType_t xTaskAbortDelay(TaskHandle_t xTask)
     return pdPASS;
 }
 
-/* The kernel delay the port's wait on time makes */
-TickType_t UT_Stub_CommonLastDelayTicks;
-
-void vTaskDelay(TickType_t xTicksToDelay)
-{
-    UT_Stub_CommonLastDelayTicks = xTicksToDelay;
-
-    UT_DEFAULT_IMPL(vTaskDelay);
-}
-
 void vTaskEnterCritical(void)
 {
     UT_DEFAULT_IMPL(vTaskEnterCritical);
@@ -123,25 +113,6 @@ int32 OS_FreeRTOS_TaskInit(void)
     }
 
     return OS_SUCCESS;
-}
-
-/*
- * The slot OS_FreeRTOS_Checkpoint() reads for the calling task: the test
- * scripts what it holds, and the index read is kept to check it is the right
- * one.
- */
-void *UT_Stub_CommonTLSValue;
-int   UT_Stub_LastTLSIndex = -1;
-
-void *pvTaskGetThreadLocalStoragePointer(TaskHandle_t xTaskToQuery, int xIndex)
-{
-    (void)xTaskToQuery;
-
-    UT_Stub_LastTLSIndex = xIndex;
-
-    UT_DEFAULT_IMPL(pvTaskGetThreadLocalStoragePointer);
-
-    return UT_Stub_CommonTLSValue;
 }
 
 /*

@@ -20,7 +20,7 @@ OS_impl_task_tcb_t             OS_impl_task_tcb_pool[OS_MAX_TASKS];
 static StaticSemaphore_t OS_FreeRTOS_TcbSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_TcbSem;
 
-static void OS_FreeRTOS_DeleteSelf(void);
+static void OS_FreeRTOS_TaskEntered(void);
 
 /*
  *********************************************************************************
@@ -87,8 +87,8 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
  *
  *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Creates the semaphore that counts the TCB pool entries not in
- *           use, and sets the hook the port's checkpoint ends a task that
- *           deleted itself with. See prototype in os-freertos.h.
+ *           use, and registers the entry hook that ends a task that
+ *           deleted itself. See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
 int32 OS_FreeRTOS_TaskInit(void)
@@ -99,9 +99,7 @@ int32 OS_FreeRTOS_TaskInit(void)
         return OS_ERROR;
     }
 
-    OS_FreeRTOS_SetCheckpointHook(OS_FreeRTOS_DeleteSelf);
-
-    return OS_SUCCESS;
+    return OS_FreeRTOS_OnEnter(OS_FreeRTOS_TaskEntered);
 }
 
 /*----------------------------------------------------------------
@@ -249,6 +247,7 @@ int32 OS_TaskCreate_Impl(const OS_object_token_t *token, uint32 flags)
         {
             entry         = &OS_impl_task_tcb_pool[i];
             entry->in_use = true;
+            entry->doomed = false;
             break;
         }
     }
@@ -332,8 +331,8 @@ static void OS_FreeRTOS_DeleteHandedOver(void *pvParameter1, uint32_t ulParamete
  *           off the CPU: the timer task, which runs at the highest priority,
  *           is asked to delete it, and it suspends itself until that
  *           happens. If the timer queue is full it deletes itself, and the
- *           idle task frees the TCB. The port's checkpoint hook (see
- *           os-freertos.h), and what OS_TaskExit_Impl() does. Never returns.
+ *           idle task frees the TCB. What OS_FreeRTOS_TaskEntered() does for a
+ *           task that deleted itself, and OS_TaskExit_Impl() does. Never returns.
  *
  *-----------------------------------------------------------------*/
 static void OS_FreeRTOS_DeleteSelf(void)
@@ -365,6 +364,28 @@ static void OS_FreeRTOS_DeleteSelf(void)
 
 /*----------------------------------------------------------------
  *
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           The entry hook this module registers (see os-freertos.h): ends
+ *           the calling task if it deleted itself with OS_TaskDelete(), which
+ *           only marked it. Returns at once for any other task, including
+ *           the ones the port did not create (idle, timer service). The
+ *           POSIX port leaves a thread that cancels itself running until its
+ *           next cancellation point in the same way.
+ *
+ *-----------------------------------------------------------------*/
+static void OS_FreeRTOS_TaskEntered(void)
+{
+    const OS_impl_task_tcb_t *entry;
+
+    entry = OS_FreeRTOS_TcbToEntry(xTaskGetCurrentTaskHandle());
+    if (entry != NULL && entry->doomed)
+    {
+        OS_FreeRTOS_DeleteSelf();
+    }
+}
+
+/*----------------------------------------------------------------
+ *
  *  Purpose: Implemented per internal OSAL API
  *           See prototype for argument/return detail
  *
@@ -381,14 +402,20 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
 
     if (handle == xTaskGetCurrentTaskHandle())
     {
+        OS_impl_task_tcb_t *entry;
+
         /*
          * A task cannot be ended from inside its own delete: that would never get back
          * out to OS_TaskDelete(), which releases the slot and calls the delete hook once
-         * this returns. So the task is only marked, and goes at its next wait, where
-         * OS_FreeRTOS_Checkpoint() finds the mark, as a thread that cancels itself does
-         * on the POSIX port. Any non-NULL value is the mark; the handle is at hand.
+         * this returns. So the task is only marked, and goes at its next wait, where the
+         * entry hook OS_FreeRTOS_TaskEntered() finds the mark. A task the port did not
+         * create has no entry to mark.
          */
-        vTaskSetThreadLocalStoragePointer(NULL, OS_FREERTOS_TASK_DOOMED_TLS_INDEX, handle);
+        entry = OS_FreeRTOS_TcbToEntry(handle);
+        if (entry != NULL)
+        {
+            entry->doomed = true;
+        }
     }
     else
     {
@@ -427,7 +454,9 @@ void OS_TaskExit_Impl(void)
  *-----------------------------------------------------------------*/
 int32 OS_TaskDelay_Impl(uint32 millisecond)
 {
-    OS_FreeRTOS_Delay(OS_FreeRTOS_MsToTicks(millisecond));
+    OS_FreeRTOS_Enter();
+
+    vTaskDelay(OS_FreeRTOS_MsToTicks(millisecond));
 
     return OS_SUCCESS;
 }

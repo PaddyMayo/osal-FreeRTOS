@@ -27,10 +27,11 @@
 static StaticSemaphore_t OS_FreeRTOS_IdleSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_IdleSem;
 
-/* The task death hooks, in registration order, and the checkpoint hook; see os-freertos.h */
-static OS_FreeRTOS_TaskDiedHook_t   OS_FreeRTOS_TaskDiedHooks[OS_FREERTOS_TASK_DIED_HOOKS];
-static uint32                       OS_FreeRTOS_TaskDiedHookCount;
-static OS_FreeRTOS_CheckpointHook_t OS_FreeRTOS_CheckpointHook;
+/* The task death hooks and the entry hooks, each in registration order; see os-freertos.h */
+static OS_FreeRTOS_TaskDiedHook_t OS_FreeRTOS_TaskDiedHooks[OS_FREERTOS_TASK_DIED_HOOKS];
+static uint32                     OS_FreeRTOS_TaskDiedHookCount;
+static OS_FreeRTOS_EnterHook_t    OS_FreeRTOS_EnterHooks[OS_FREERTOS_ENTER_HOOKS];
+static uint32                     OS_FreeRTOS_EnterHookCount;
 
 /*----------------------------------------------------------------
  *
@@ -72,7 +73,7 @@ int32 OS_API_Impl_Init(osal_objtype_t idtype)
 
     /* OS_API_Init() calls this type first, so the hooks the later types register survive */
     OS_FreeRTOS_TaskDiedHookCount = 0;
-    OS_FreeRTOS_CheckpointHook    = NULL;
+    OS_FreeRTOS_EnterHookCount    = 0;
 
     OS_SharedGlobalVars.TicksPerSecond  = configTICK_RATE_HZ;
     OS_SharedGlobalVars.MicroSecPerTick = 1000000 / configTICK_RATE_HZ;
@@ -122,8 +123,8 @@ bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_user_t *user)
 {
     bool admitted;
 
-    /* Every wait on a kernel object starts here: where a task that deleted itself is ended */
-    OS_FreeRTOS_Checkpoint();
+    /* Every wait on a kernel object starts here: where the modules' entry hooks run */
+    OS_FreeRTOS_Enter();
 
     taskENTER_CRITICAL();
     admitted = !gate->closed;
@@ -313,25 +314,17 @@ void OS_FreeRTOS_TaskDied(TaskHandle_t task)
  *           See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
-void OS_FreeRTOS_SetCheckpointHook(OS_FreeRTOS_CheckpointHook_t hook)
+int32 OS_FreeRTOS_OnEnter(OS_FreeRTOS_EnterHook_t hook)
 {
-    OS_FreeRTOS_CheckpointHook = hook;
-}
-
-/*----------------------------------------------------------------
- *
- *  Purpose: Port-internal helper routine, not part of OSAL API.
- *           See prototype in os-freertos.h. The slot is only ever set by
- *           the task module, which sets the hook from its init before any
- *           task exists, so a set slot means the hook is there.
- *
- *-----------------------------------------------------------------*/
-void OS_FreeRTOS_Checkpoint(void)
-{
-    if (pvTaskGetThreadLocalStoragePointer(NULL, OS_FREERTOS_TASK_DOOMED_TLS_INDEX) != NULL)
+    if (OS_FreeRTOS_EnterHookCount >= OS_FREERTOS_ENTER_HOOKS)
     {
-        OS_FreeRTOS_CheckpointHook();
+        return OS_ERROR;
     }
+
+    OS_FreeRTOS_EnterHooks[OS_FreeRTOS_EnterHookCount] = hook;
+    ++OS_FreeRTOS_EnterHookCount;
+
+    return OS_SUCCESS;
 }
 
 /*----------------------------------------------------------------
@@ -340,9 +333,12 @@ void OS_FreeRTOS_Checkpoint(void)
  *           See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
-void OS_FreeRTOS_Delay(TickType_t ticks)
+void OS_FreeRTOS_Enter(void)
 {
-    OS_FreeRTOS_Checkpoint();
+    uint32 i;
 
-    vTaskDelay(ticks);
+    for (i = 0; i < OS_FreeRTOS_EnterHookCount; ++i)
+    {
+        OS_FreeRTOS_EnterHooks[i]();
+    }
 }

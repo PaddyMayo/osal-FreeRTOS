@@ -42,14 +42,14 @@
  *       the hooks in the order they were registered, which is the order
  *       OS_API_Impl_Init() is called in (osapi-idmap.h: mutexes before
  *       condition variables);
- *     - every wait into the port starts in os-impl-common.c, at
- *       OS_FreeRTOS_GateEnter() for a wait on an object and OS_FreeRTOS_Delay()
- *       for one on time. Both pass OS_FreeRTOS_Checkpoint(), which ends the
- *       calling task if its OS_FREERTOS_TASK_DOOMED_TLS_INDEX slot is set,
- *       through the one hook the task module registers with
- *       OS_FreeRTOS_SetCheckpointHook(). The task module alone sets the slot,
- *       in OS_TaskDelete_Impl() on the caller. No module blocks the kernel on
- *       its own behalf without going through one of these two entries.
+ *     - a module registers a hook with OS_FreeRTOS_OnEnter() from its init, to
+ *       run as a task enters a wait into the port. Every wait calls
+ *       OS_FreeRTOS_Enter(), which runs the hooks in the order they were
+ *       registered: OS_FreeRTOS_GateEnter() for a wait on an object, and
+ *       OS_TaskDelay_Impl() for one on time. The task module registers the
+ *       hook that ends a task that deleted itself, which it only marks in
+ *       OS_TaskDelete_Impl(): that call has to return so OSAL can finish the
+ *       delete. Common knows nothing of what a hook does.
  */
 
 #ifndef OS_FREERTOS_H
@@ -140,27 +140,25 @@ int32 OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_TaskDiedHook_t hook);
  */
 void OS_FreeRTOS_TaskDied(TaskHandle_t task);
 
-typedef void (*OS_FreeRTOS_CheckpointHook_t)(void);
+typedef void (*OS_FreeRTOS_EnterHook_t)(void);
 
-/* Sets the hook OS_FreeRTOS_Checkpoint() ends a task with; the task module calls this from its init */
-void OS_FreeRTOS_SetCheckpointHook(OS_FreeRTOS_CheckpointHook_t hook);
-
-/*
- * The port's cancellation point: a task that deleted itself with OS_TaskDelete()
- * is not ended by that call, which has to return so OSAL can finish the delete
- * and call the delete hook (the POSIX port leaves the thread running until its
- * next cancellation point in the same way). Passed by the port's wait entries,
- * OS_FreeRTOS_GateEnter() and OS_FreeRTOS_Delay(). Returns at once for a task
- * whose OS_FREERTOS_TASK_DOOMED_TLS_INDEX slot is NULL; for one whose slot is
- * set it runs the checkpoint hook, which ends the task and does not return.
- */
-void OS_FreeRTOS_Checkpoint(void);
+/* How many hooks OS_FreeRTOS_OnEnter() takes: one per module that acts as a task enters a wait */
+#define OS_FREERTOS_ENTER_HOOKS 1
 
 /*
- * The port's wait on time: passes the checkpoint, then sleeps for ticks (zero
- * only yields). OS_TaskDelay_Impl() is this, in milliseconds.
+ * Registers a hook that OS_FreeRTOS_Enter() runs, after those registered before
+ * it. A hook runs in the task that is entering the wait, and may end it, in
+ * which case it does not return. Returns OS_SUCCESS, or OS_ERROR once
+ * OS_FREERTOS_ENTER_HOOKS are registered, which fails the init: raise the count
+ * for a new hook.
  */
-void OS_FreeRTOS_Delay(TickType_t ticks);
+int32 OS_FreeRTOS_OnEnter(OS_FreeRTOS_EnterHook_t hook);
+
+/*
+ * Called as a task enters a wait into the port (OS_FreeRTOS_GateEnter(),
+ * OS_TaskDelay_Impl()), before it blocks: runs the registered hooks in order.
+ */
+void OS_FreeRTOS_Enter(void);
 
 /*
  * The init hooks OS_API_Impl_Init() in os-impl-common.c calls, each defined by
@@ -170,8 +168,9 @@ void OS_FreeRTOS_Delay(TickType_t ticks);
 
 /*
  * Defined in os-impl-tasks.c. Creates the semaphore that counts free TCB pool
- * entries and sets the checkpoint hook. Returns OS_SUCCESS, or OS_ERROR if the
- * semaphore could not be created.
+ * entries and registers the entry hook that ends a task that deleted itself.
+ * Returns OS_SUCCESS, or OS_ERROR if the semaphore could not be created or the
+ * hook could not be registered.
  */
 int32 OS_FreeRTOS_TaskInit(void);
 
