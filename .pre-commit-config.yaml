@@ -13,11 +13,38 @@ repos:
         language: system
         files: \.(c|h)$
 
-      # The builds and tests run the Makefile's targets (make help), so a hook and
-      # a person run the same commands.
+      # ======================================================================
+      # Port checks (freertos-*)
+      #
+      # Every hook below calls the Makefile (see `make help`), so a person at a
+      # terminal and the hook / CI run exactly the same commands. There are
+      # three kinds of check:
+      #
+      #   1. coverage  - runs the white-box tests and enforces 100% coverage.
+      #                  Runs ONCE, over every platform.
+      #   2. cross build - compiles the osal library for each platform, so code
+      #                  that only builds for one architecture (e.g. the halt
+      #                  path in bsp_console.c) cannot break unnoticed. Build
+      #                  only: no tests run in these hooks.
+      #   3. misra     - MISRA C:2012 static analysis, once per platform.
+      #
+      # The platforms are the ones in the Makefile's PLATFORMS list:
+      #   posix-aarch32  32-bit Arm Linux, the POSIX port, run under qemu-user
+      #   cortex-m3      ARMv7-M
+      #   cortex-m4f     ARMv7E-M, single-precision hardware FPU (fpv4-sp-d16)
+      #   cortex-m7      ARMv7E-M, double-precision hardware FPU (fpv5-d16)
+      #   cortex-m33     ARMv8-M mainline
+      # Each Cortex-M image boots on its own QEMU board; posix-aarch32 is the
+      # default platform for a bare `make test`.
+      # ======================================================================
 
-      # The white-box tests on every platform (each on its QEMU process), then gcovr
-      # fails below the thresholds in gcovr.cfg (100% lines and branches).
+      # ---- 1. Coverage -----------------------------------------------------
+      # Runs the white-box tests (freertos-coverage-tests/) on EVERY platform,
+      # each on its own QEMU process, then gcovr fails the commit if lines or
+      # branches fall below the thresholds in gcovr.cfg (100% for both).
+      # Why: the port is checked against real kernels for each architecture,
+      # not just the host, and no code path is left untested.
+      # Runs when the port, its tests, or the test tooling change.
       - id: freertos-coverage
         name: freertos coverage - white-box tests, 100% lines/branches
         entry: make
@@ -27,10 +54,15 @@ repos:
         verbose: true
         files: ^(freertos/|freertos-coverage-tests/|scripts/|gcovr\.cfg$|platforms/|Makefile$)
 
-      # Build the osal library for each platform, so the ARM-only code (e.g. the
-      # halt path in bsp_console.c) is always built. Each platform gets its own
-      # build/<platform>/ directory. The tests only run on posix-aarch32 (under
-      # qemu), so the others build without them.
+      # ---- 2. Cross builds -------------------------------------------------
+      # Builds the osal library for one platform. Each platform gets its own
+      # build/<platform>/ directory, so the builds never overwrite each other.
+      # The Cortex-M hooks only prove the library compiles and links for that
+      # core; the tests for them run in the coverage hook above.
+      # All of them re-run when the port, the BSP, a platform config, or the
+      # root build files change (the shared pattern below).
+
+      # Cortex-M builds
       - id: freertos-cross-cortex-m3
         name: freertos cross build - cortex-m3
         entry: make
@@ -60,8 +92,9 @@ repos:
         pass_filenames: false
         files: *freertos_build_files
 
-      # The POSIX port for 32-bit Arm Linux, with the unit tests on: the one platform
-      # the tests run on.
+      # POSIX build (32-bit Arm Linux). Unlike the Cortex-M builds it also
+      # builds with OSAL's unit tests on, so the black-box tests are compiled
+      # for the platform that runs them under qemu-user.
       - id: freertos-cross-posix-aarch32
         name: freertos cross build - posix-aarch32
         entry: make
@@ -70,10 +103,16 @@ repos:
         pass_filenames: false
         files: *freertos_build_files
 
-      # MISRA C:2012 on the port's own code (freertos/, generic-freertos/, platforms/),
-      # once per platform, so each is checked as it builds: the defines and include
-      # paths come from the platform's own build (make misra). Any violation fails;
-      # misra-suppressions.txt lists the rules the port breaks today.
+      # ---- 3. MISRA C:2012 -------------------------------------------------
+      # Static analysis of the port's own code only (freertos/, generic-freertos/,
+      # platforms/), not FreeRTOS or OSAL. Run once per platform because the
+      # defines and include paths come from that platform's own build
+      # (make misra), so code behind a platform's #ifdefs is checked as it is
+      # really compiled. Any violation fails the hook; the rules the port
+      # knowingly breaks today are listed in misra-suppressions.txt.
+      # Also re-runs when misra-suppressions.txt changes.
+
+      # POSIX
       - id: freertos-misra-posix-aarch32
         name: freertos misra - posix-aarch32
         entry: make
@@ -81,6 +120,8 @@ repos:
         language: system
         pass_filenames: false
         files: &freertos_misra_files ^(freertos/|generic-freertos/|platforms/|CMakeLists\.txt$|Makefile$|misra-suppressions\.txt$)
+
+      # Cortex-M
       - id: freertos-misra-cortex-m3
         name: freertos misra - cortex-m3
         entry: make
