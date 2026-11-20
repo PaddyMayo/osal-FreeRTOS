@@ -43,8 +43,8 @@ typedef struct
 /* Mirrors generic-freertos/config/FreeRTOSConfig.h */
 #define OS_FREERTOS_TASK_ID_TLS_INDEX 0
 
-/* Two indexes: 0 for application code, 1 for the port's condition variables */
-#define configTASK_NOTIFICATION_ARRAY_ENTRIES 2
+/* Three indexes: 0 for application code, 1 for the port's condition variables, 2 for its time bases */
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES 3
 
 /* Truncates like the real one, which is what OS_FreeRTOS_MsToTicks() compensates for */
 #define pdMS_TO_TICKS(xTimeInMs) ((TickType_t)(((unsigned long long)(xTimeInMs) * configTICK_RATE_HZ) / 1000U))
