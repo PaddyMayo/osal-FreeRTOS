@@ -7,9 +7,21 @@ target_include_directories(osal_littlefs SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE
 # Each open file takes its cache from a static buffer, so littlefs must not malloc
 target_compile_definitions(osal_littlefs INTERFACE LFS_NO_MALLOC)
 
+# Subsystems this port leaves out: OSAL's own portable blocks make every call in
+# them return OS_ERR_NOT_IMPLEMENTED (no TCP/IP stack, no dynamic loading)
+set(OSAL_FREERTOS_UNSUPPORTED_SOURCES
+    ${OSAL_SOURCE_DIR}/src/os/portable/os-impl-no-network-gethostid.c
+    ${OSAL_SOURCE_DIR}/src/os/portable/os-impl-no-network-gethostname.c
+    ${OSAL_SOURCE_DIR}/src/os/portable/os-impl-no-select.c
+    ${OSAL_SOURCE_DIR}/src/os/portable/os-impl-no-sockets.c
+    ${OSAL_SOURCE_DIR}/src/os/portable/os-impl-no-loader.c
+    ${OSAL_SOURCE_DIR}/src/os/portable/os-impl-no-symtab.c
+)
+
 # The library itself is compiled with the port, so there is one copy of it
 add_library(osal_freertos_impl OBJECT
     ${OSAL_FREERTOS_IMPL_SOURCES}
+    ${OSAL_FREERTOS_UNSUPPORTED_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/littlefs/lfs.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/littlefs/lfs_util.c
 )
