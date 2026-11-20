@@ -100,7 +100,7 @@ set(FREERTOS_COVERAGE_COMMON_SOURCES
 # OS_*_table arrays, OS_TaskEntryPoint, ...) from OSAL's own ut_osapi_*_stubs
 # libraries, as OSAL's unit-test-coverage does, instead of the hand-written
 # stubs/osal-shared-stubs.c.
-set(FREERTOS_OSAL_STUB_MODULES queue)
+set(FREERTOS_OSAL_STUB_MODULES queue timebase)
 
 # Umbrella target aggregating every discovered module's testrunner below, so
 # CI (and anyone else) can build "all coverage tests that currently exist"
@@ -122,6 +122,7 @@ set(FREERTOS_MODULE_LIST
     mutex
     queue
     tasks
+    timebase
 )
 
 foreach(MODULE_NAME ${FREERTOS_MODULE_LIST})
@@ -291,7 +292,6 @@ set(FREERTOS_STUB_MODULES
     select
     shell
     sockets
-    timebase
 )
 file(GLOB FREERTOS_IMPL_SOURCES ${CMAKE_SOURCE_DIR}/freertos/src/os-impl-*.c)
 set(FREERTOS_UNTESTED_MODULES)

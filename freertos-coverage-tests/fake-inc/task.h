@@ -22,6 +22,8 @@ typedef void (*TaskFunction_t)(void *);
 
 TaskHandle_t OCS_xTaskGetCurrentTaskHandle(void);
 
+TickType_t OCS_xTaskGetTickCount(void);
+
 TaskHandle_t OCS_xTaskCreateStatic(TaskFunction_t               pxTaskCode,
                                    const char *const            pcName,
                                    const configSTACK_DEPTH_TYPE ulStackDepth,
@@ -67,6 +69,7 @@ void *OCS_pvTaskGetThreadLocalStoragePointer(TaskHandle_t xTaskToQuery, int xInd
 void OCS_vTaskSetThreadLocalStoragePointer(TaskHandle_t xTaskToSet, int xIndex, void *pvValue);
 
 #define xTaskGetCurrentTaskHandle          OCS_xTaskGetCurrentTaskHandle
+#define xTaskGetTickCount                  OCS_xTaskGetTickCount
 #define xTaskCreateStatic                  OCS_xTaskCreateStatic
 #define xTaskCreate                        OCS_xTaskCreate
 #define vTaskStartScheduler                OCS_vTaskStartScheduler
