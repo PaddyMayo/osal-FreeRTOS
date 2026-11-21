@@ -114,35 +114,6 @@ void OS_FreeRTOS_TaskDied(TaskHandle_t task)
     UT_DEFAULT_IMPL(OS_FreeRTOS_TaskDied);
 }
 
-/*
- * The port's entry registry lives in os-impl-common.c and is covered there. The
- * hook os-impl-tasks.c registers is kept, so a test can run it; a negative
- * retcode makes the registration fail, as a full registry does. An entry runs
- * no hooks here: the delay's order against it is checked from a hook on this stub.
- */
-OS_FreeRTOS_EnterHook_t UT_Stub_EnterHook;
-
-int32 OS_FreeRTOS_OnEnter(OS_FreeRTOS_EnterHook_t hook)
-{
-    int32 status;
-
-    UT_Stub_EnterHook = hook;
-
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_OnEnter);
-
-    if (status < 0)
-    {
-        return OS_ERROR;
-    }
-
-    return OS_SUCCESS;
-}
-
-void OS_FreeRTOS_Enter(void)
-{
-    UT_DEFAULT_IMPL(OS_FreeRTOS_Enter);
-}
-
 void vTaskSuspend(TaskHandle_t xTaskToSuspend)
 {
     UT_Stub_LastSuspendedHandle = xTaskToSuspend;

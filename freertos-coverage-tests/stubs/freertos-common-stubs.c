@@ -116,6 +116,16 @@ int32 OS_FreeRTOS_TaskInit(void)
 }
 
 /*
+ * os-impl-common.c calls this as a caller enters a gate, but it lives in
+ * os-impl-tasks.c and is covered there. This runner links only the common
+ * module, so the stand-in only counts the entries.
+ */
+void OS_FreeRTOS_Enter(void)
+{
+    UT_DEFAULT_IMPL(OS_FreeRTOS_Enter);
+}
+
+/*
  * os-impl-common.c also calls these for the mutex and condition variable object
  * types; they live in os-impl-mutex.c and os-impl-condvar.c and are covered
  * there.

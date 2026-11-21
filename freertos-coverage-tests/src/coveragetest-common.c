@@ -37,14 +37,6 @@ extern SemaphoreHandle_t  UT_Stub_LastTakeSem;
 extern TickType_t         UT_Stub_LastTakeTicks;
 extern SemaphoreHandle_t  UT_Stub_LastGiveSem;
 
-/* An entry hook, counting the entries it ran for */
-static uint32 UT_EnterHookCalls;
-
-static void UT_CountEnter(void)
-{
-    ++UT_EnterHookCalls;
-}
-
 /*
 **********************************************************************************
 **          TEST CASES
@@ -146,10 +138,8 @@ void Test_Gate_Enter(void)
     memset(&gate, 0, sizeof(gate));
     memset(&refused, 0, sizeof(refused));
 
-    /* every Enter is a wait entering the port: the entry hooks run for it */
+    /* every Enter is a wait entering the port: it calls OS_FreeRTOS_Enter() first */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
-    UT_EnterHookCalls = 0;
-    UtAssert_INT32_EQ(OS_FreeRTOS_OnEnter(UT_CountEnter), OS_SUCCESS);
 
     /* an open gate admits a caller and lists it under the calling task and this gate */
     UT_Stub_CommonCurrentTask = UT_TASK_1;
@@ -161,11 +151,12 @@ void Test_Gate_Enter(void)
     UtAssert_True(first.gate == &gate, "first user points at the gate");
     UtAssert_True(second.gate == &gate, "second user points at the gate");
     UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 2);
-    UtAssert_UINT32_EQ(UT_EnterHookCalls, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_Enter, 2);
 
-    /* a closed gate refuses, and lists nothing */
+    /* a closed gate refuses, and lists nothing; the wait still entered the port first */
     OS_FreeRTOS_GateClose(&gate);
     UtAssert_True(!OS_FreeRTOS_GateEnter(&gate, &refused), "closed gate refuses a caller");
+    UtAssert_STUB_COUNT(OS_FreeRTOS_Enter, 3);
     UtAssert_True(refused.task == NULL, "refused user node untouched");
     UtAssert_UINT32_EQ(OS_FreeRTOS_GateWake(&gate), 2);
 
@@ -348,33 +339,6 @@ void Test_TaskDied_Hooks(void)
     UtAssert_UINT32_EQ(UT_HookCalls, OS_FREERTOS_TASK_DIED_HOOKS);
 }
 
-void Test_Enter_Hooks(void)
-{
-    uint32 i;
-
-    UT_EnterHookCalls = 0;
-
-    /* the registry is cleared by the init of the type OS_API_Init() starts with; with no hook, an entry does nothing */
-    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
-    OS_FreeRTOS_Enter();
-    UtAssert_UINT32_EQ(UT_EnterHookCalls, 0);
-
-    /* registered hooks run on each entry; one more than the registry takes is refused, failing its init */
-    for (i = 0; i < OS_FREERTOS_ENTER_HOOKS; ++i)
-    {
-        UtAssert_INT32_EQ(OS_FreeRTOS_OnEnter(UT_CountEnter), OS_SUCCESS);
-    }
-    UtAssert_INT32_EQ(OS_FreeRTOS_OnEnter(UT_CountEnter), OS_ERROR);
-
-    OS_FreeRTOS_Enter();
-    UtAssert_UINT32_EQ(UT_EnterHookCalls, OS_FREERTOS_ENTER_HOOKS);
-
-    /* init clears the registry: nothing runs until something registers again */
-    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
-    OS_FreeRTOS_Enter();
-    UtAssert_UINT32_EQ(UT_EnterHookCalls, OS_FREERTOS_ENTER_HOOKS);
-}
-
 /*
  * Setup function prior to every test
  */
@@ -407,5 +371,4 @@ void UtTest_Setup(void)
     ADD_TEST(Gate_Wake);
     ADD_TEST(Gate_ReleaseTask);
     ADD_TEST(TaskDied_Hooks);
-    ADD_TEST(Enter_Hooks);
 }

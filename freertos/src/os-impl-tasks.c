@@ -20,8 +20,6 @@ OS_impl_task_tcb_t             OS_impl_task_tcb_pool[OS_MAX_TASKS];
 static StaticSemaphore_t OS_FreeRTOS_TcbSemBuffer;
 static SemaphoreHandle_t OS_FreeRTOS_TcbSem;
 
-static void OS_FreeRTOS_TaskEntered(void);
-
 /*
  *********************************************************************************
  *          TASK API
@@ -87,8 +85,7 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
  *
  *  Purpose: Port-internal helper routine, not part of OSAL API.
  *           Creates the semaphore that counts the TCB pool entries not in
- *           use, and registers the entry hook that ends a task that
- *           deleted itself. See prototype in os-freertos.h.
+ *           use. See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
 int32 OS_FreeRTOS_TaskInit(void)
@@ -99,7 +96,7 @@ int32 OS_FreeRTOS_TaskInit(void)
         return OS_ERROR;
     }
 
-    return OS_FreeRTOS_OnEnter(OS_FreeRTOS_TaskEntered);
+    return OS_SUCCESS;
 }
 
 /*----------------------------------------------------------------
@@ -331,7 +328,7 @@ static void OS_FreeRTOS_DeleteHandedOver(void *pvParameter1, uint32_t ulParamete
  *           off the CPU: the timer task, which runs at the highest priority,
  *           is asked to delete it, and it suspends itself until that
  *           happens. If the timer queue is full it deletes itself, and the
- *           idle task frees the TCB. What OS_FreeRTOS_TaskEntered() does for a
+ *           idle task frees the TCB. What OS_FreeRTOS_Enter() does for a
  *           task that deleted itself, and OS_TaskExit_Impl() does. Never returns.
  *
  *-----------------------------------------------------------------*/
@@ -364,16 +361,16 @@ static void OS_FreeRTOS_DeleteSelf(void)
 
 /*----------------------------------------------------------------
  *
- *  Purpose: Local helper routine, not part of OSAL API.
- *           The entry hook this module registers (see os-freertos.h): ends
- *           the calling task if it deleted itself with OS_TaskDelete(), which
+ *  Purpose: Port-internal helper routine, not part of OSAL API.
+ *           Called as a task enters a wait (see os-freertos.h): ends the
+ *           calling task if it deleted itself with OS_TaskDelete(), which
  *           only marked it. Returns at once for any other task, including
  *           the ones the port did not create (idle, timer service). The
  *           POSIX port leaves a thread that cancels itself running until its
  *           next cancellation point in the same way.
  *
  *-----------------------------------------------------------------*/
-static void OS_FreeRTOS_TaskEntered(void)
+void OS_FreeRTOS_Enter(void)
 {
     const OS_impl_task_tcb_t *entry;
 
@@ -408,7 +405,7 @@ int32 OS_TaskDelete_Impl(const OS_object_token_t *token)
          * A task cannot be ended from inside its own delete: that would never get back
          * out to OS_TaskDelete(), which releases the slot and calls the delete hook once
          * this returns. So the task is only marked, and goes at its next wait, where the
-         * entry hook OS_FreeRTOS_TaskEntered() finds the mark. A task the port did not
+         * OS_FreeRTOS_Enter() finds the mark. A task the port did not
          * create has no entry to mark.
          */
         entry = OS_FreeRTOS_TcbToEntry(handle);

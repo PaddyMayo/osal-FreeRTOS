@@ -33,8 +33,8 @@
  *   A primitive that keeps per-task state (a gate node on the task's stack, a
  *   mutex the task holds) must drop it before the task goes, and a task that
  *   deleted itself must be ended somewhere the kernel can be entered, i.e. at
- *   its next wait. Neither the task module nor the primitives know each other:
- *   both go through os-impl-common.c.
+ *   its next wait. The task module does not know the primitives, so the
+ *   primitives reach it through os-impl-common.c:
  *
  *     - a primitive registers a hook with OS_FreeRTOS_OnTaskDied() from its
  *       init. The task module calls OS_FreeRTOS_TaskDied() once for a task
@@ -42,14 +42,12 @@
  *       the hooks in the order they were registered, which is the order
  *       OS_API_Impl_Init() is called in (osapi-idmap.h: mutexes before
  *       condition variables);
- *     - a module registers a hook with OS_FreeRTOS_OnEnter() from its init, to
- *       run as a task enters a wait into the port. Every wait calls
- *       OS_FreeRTOS_Enter(), which runs the hooks in the order they were
- *       registered: OS_FreeRTOS_GateEnter() for a wait on an object, and
- *       OS_TaskDelay_Impl() for one on time. The task module registers the
- *       hook that ends a task that deleted itself, which it only marks in
- *       OS_TaskDelete_Impl(): that call has to return so OSAL can finish the
- *       delete. Common knows nothing of what a hook does.
+ *     - a task that deleted itself is ended at its next wait. OS_TaskDelete_Impl()
+ *       only marks it, because that call has to return so OSAL can finish the
+ *       delete. Every wait into the port calls OS_FreeRTOS_Enter() first, which
+ *       the task module defines: OS_FreeRTOS_GateEnter() for a wait on an
+ *       object, and OS_TaskDelay_Impl() for one on time. Enter ends the calling
+ *       task if it is marked, and does nothing for any other.
  */
 
 #ifndef OS_FREERTOS_H
@@ -140,23 +138,11 @@ int32 OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_TaskDiedHook_t hook);
  */
 void OS_FreeRTOS_TaskDied(TaskHandle_t task);
 
-typedef void (*OS_FreeRTOS_EnterHook_t)(void);
-
-/* How many hooks OS_FreeRTOS_OnEnter() takes: one per module that acts as a task enters a wait */
-#define OS_FREERTOS_ENTER_HOOKS 1
-
 /*
- * Registers a hook that OS_FreeRTOS_Enter() runs, after those registered before
- * it. A hook runs in the task that is entering the wait, and may end it, in
- * which case it does not return. Returns OS_SUCCESS, or OS_ERROR once
- * OS_FREERTOS_ENTER_HOOKS are registered, which fails the init: raise the count
- * for a new hook.
- */
-int32 OS_FreeRTOS_OnEnter(OS_FreeRTOS_EnterHook_t hook);
-
-/*
- * Called as a task enters a wait into the port (OS_FreeRTOS_GateEnter(),
- * OS_TaskDelay_Impl()), before it blocks: runs the registered hooks in order.
+ * Defined in os-impl-tasks.c. Called as a task enters a wait into the port
+ * (OS_FreeRTOS_GateEnter(), OS_TaskDelay_Impl()), before it blocks: ends the
+ * calling task if it deleted itself with OS_TaskDelete(), which only marked it,
+ * in which case it does not return. Returns at once for any other task.
  */
 void OS_FreeRTOS_Enter(void);
 
@@ -168,9 +154,8 @@ void OS_FreeRTOS_Enter(void);
 
 /*
  * Defined in os-impl-tasks.c. Creates the semaphore that counts free TCB pool
- * entries and registers the entry hook that ends a task that deleted itself.
- * Returns OS_SUCCESS, or OS_ERROR if the semaphore could not be created or the
- * hook could not be registered.
+ * entries. Returns OS_SUCCESS, or OS_ERROR if the semaphore could not be
+ * created.
  */
 int32 OS_FreeRTOS_TaskInit(void);
 
