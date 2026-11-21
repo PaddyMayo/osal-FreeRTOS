@@ -57,10 +57,9 @@ extern configSTACK_DEPTH_TYPE UT_Stub_LastCreateStackDepth;
 
 extern void UT_Stub_ResetTLS(void);
 
-/* The port's task death notice and entry registry, stand-ins in freertos-task-stubs.c */
-extern TaskHandle_t            UT_Stub_LastDiedTask;
-extern uint32                  UT_Stub_DiedCountAtPend;
-extern OS_FreeRTOS_EnterHook_t UT_Stub_EnterHook;
+/* The port's task death notice, a stand-in in freertos-task-stubs.c */
+extern TaskHandle_t UT_Stub_LastDiedTask;
+extern uint32       UT_Stub_DiedCountAtPend;
 
 /* The TCB pool's semaphore, declared in freertos-task-stubs.c */
 extern StaticSemaphore_t *UT_Stub_LastCountingSemBuffer;
@@ -225,20 +224,10 @@ void Test_OS_FreeRTOS_TaskInit(void)
     UtAssert_UINT32_EQ(UT_Stub_LastCountingSemMax, OS_MAX_TASKS);
     UtAssert_UINT32_EQ(UT_Stub_LastCountingSemInitial, OS_MAX_TASKS);
 
-    /* the port's entry registry is given the hook that ends a task that deleted itself */
-    UtAssert_STUB_COUNT(OS_FreeRTOS_OnEnter, 1);
-    UtAssert_True(UT_Stub_EnterHook != NULL, "an entry hook is registered");
-
-    /* xSemaphoreCreateCountingStatic() failure -> OS_ERROR, and nothing is registered */
+    /* xSemaphoreCreateCountingStatic() failure -> OS_ERROR, which fails OS_API_Init() */
     UT_SetDeferredRetcode(UT_KEY(xSemaphoreCreateCountingStatic), 1, -1);
     UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_ERROR);
     UtAssert_STUB_COUNT(xSemaphoreCreateCountingStatic, 2);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_OnEnter, 1);
-
-    /* the registry refuses -> OS_ERROR, which fails OS_API_Init() */
-    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_OnEnter), 1, -1);
-    UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_ERROR);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_OnEnter, 2);
 }
 
 void Test_OS_FreeRTOSTaskEntry(void)
@@ -325,21 +314,18 @@ void Test_OS_TaskDelete_Impl(void)
     UtAssert_STUB_COUNT(vTaskDelete, 1);
 }
 
-void Test_OS_FreeRTOS_TaskEntered(void)
+void Test_OS_FreeRTOS_Enter(void)
 {
     OS_object_token_t token = UT_TASK_TOKEN(0);
 
-    /* the hook the init registers with the port's entry registry */
-    UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_SUCCESS);
-
     /* a task the port did not create (idle, timer service, BSP) is never ended */
     UT_Stub_CurrentTaskHandle = (TaskHandle_t)0x1000;
-    UT_Stub_EnterHook();
+    OS_FreeRTOS_Enter();
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
 
     /* a task that has not deleted itself carries on */
     UT_Stub_CurrentTaskHandle = UT_TaskTest_GetPoolTcb(1);
-    UT_Stub_EnterHook();
+    OS_FreeRTOS_Enter();
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
     UtAssert_STUB_COUNT(vTaskSuspend, 0);
 
@@ -349,7 +335,7 @@ void Test_OS_FreeRTOS_TaskEntered(void)
     UtAssert_INT32_EQ(OS_TaskDelete_Impl(&token), OS_SUCCESS);
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 0);
 
-    UT_Stub_EnterHook();
+    OS_FreeRTOS_Enter();
     UtAssert_STUB_COUNT(OS_FreeRTOS_TaskDied, 1);
     UtAssert_True(UT_Stub_LastDiedTask == UT_Stub_CurrentTaskHandle, "the primitives are told the calling task died");
     UtAssert_STUB_COUNT(xTimerPendFunctionCall, 1);
@@ -438,28 +424,33 @@ void Test_OS_TaskExit_Impl(void)
     UtAssert_NULL(UT_Stub_LastDeletedHandle);
 }
 
-/* Inside OS_FreeRTOS_Enter(): how many delays had been made by its first pass, to check the order */
-static uint32 UT_DelaysAtFirstEnter;
+/* Inside OS_FreeRTOS_TaskDied(): how many delays had been made when it ran, to check the order */
+static uint32 UT_DelaysAtDied;
 
-static int32 UT_EnterSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
+static int32 UT_DiedSeesOrder(void *UserObj, int32 StubRetcode, uint32 CallCount, const UT_StubContext_t *Context)
 {
     (void)UserObj;
+    (void)CallCount;
     (void)Context;
 
-    /* ut_assert counts from zero here */
-    if (CallCount == 0)
-    {
-        UT_DelaysAtFirstEnter = UT_GetStubCount(UT_KEY(vTaskDelay));
-    }
+    UT_DelaysAtDied = UT_GetStubCount(UT_KEY(vTaskDelay));
 
     return StubRetcode;
 }
 
 void Test_OS_TaskDelay_Impl(void)
 {
+    /* a delay is a wait into the port: a task that deleted itself is ended before it sleeps */
+    UT_DelaysAtDied = 99;
+    UT_SetHookFunction(UT_KEY(OS_FreeRTOS_TaskDied), UT_DiedSeesOrder, NULL);
+    UT_Stub_CurrentTaskHandle = UT_TaskTest_GetPoolTcb(1);
+    UT_TaskTest_SetPoolDoomed(1, true);
+    UtAssert_INT32_EQ(OS_TaskDelay_Impl(10), OS_SUCCESS);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskDied, 1);
+    UtAssert_UINT32_EQ(UT_DelaysAtDied, 0);
+    UT_TaskTest_SetPoolDoomed(1, false);
+
     /* the fake kernel runs at 100 Hz: 10 ms per tick */
-    UT_DelaysAtFirstEnter = 99;
-    UT_SetHookFunction(UT_KEY(OS_FreeRTOS_Enter), UT_EnterSeesOrder, NULL);
 
     /* zero stays zero: a yield, not a sleep */
     UtAssert_INT32_EQ(OS_TaskDelay_Impl(0), OS_SUCCESS);
@@ -476,9 +467,9 @@ void Test_OS_TaskDelay_Impl(void)
     UtAssert_INT32_EQ(OS_TaskDelay_Impl(250), OS_SUCCESS);
     UtAssert_UINT32_EQ(UT_Stub_LastDelayTicks, 26);
 
-    /* a delay is a wait into the port: every one entered it, before it slept */
-    UtAssert_STUB_COUNT(OS_FreeRTOS_Enter, 4);
-    UtAssert_UINT32_EQ(UT_DelaysAtFirstEnter, 0);
+    /* a task that has not deleted itself is left alone: only the marked one above was ended */
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskDied, 1);
+    UtAssert_STUB_COUNT(vTaskDelay, 5);
 }
 
 void Test_OS_TaskSetPriority_Impl(void)
@@ -576,7 +567,7 @@ void UtTest_Setup(void)
     ADD_TEST(OS_FreeRTOSTaskEntry);
     ADD_TEST(OS_TaskDetach_Impl);
     ADD_TEST(OS_TaskDelete_Impl);
-    ADD_TEST(OS_FreeRTOS_TaskEntered);
+    ADD_TEST(OS_FreeRTOS_Enter);
     ADD_TEST(OS_FreeRTOS_TaskCleanup);
     ADD_TEST(OS_TaskExit_Impl);
     ADD_TEST(OS_TaskDelay_Impl);
