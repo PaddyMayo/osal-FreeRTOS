@@ -37,6 +37,8 @@ extern SemaphoreHandle_t  UT_Stub_LastTakeSem;
 extern TickType_t         UT_Stub_LastTakeTicks;
 extern SemaphoreHandle_t  UT_Stub_LastGiveSem;
 
+extern OS_FreeRTOS_TaskDiedHook_t UT_Stub_IdmapInitHook;
+
 /*
 **********************************************************************************
 **          TEST CASES
@@ -99,10 +101,20 @@ void Test_OS_API_Impl_Init(void)
     UtAssert_UINT32_EQ(OS_SharedGlobalVars.TicksPerSecond, configTICK_RATE_HZ);
     UtAssert_UINT32_EQ(OS_SharedGlobalVars.MicroSecPerTick, 1000000 / configTICK_RATE_HZ);
 
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TableMutex_Init, 1);
+
     /* xSemaphoreCreateBinaryStatic() failure -> OS_ERROR */
     UT_SetDeferredRetcode(UT_KEY(xSemaphoreCreateBinaryStatic), 1, -1);
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_ERROR);
     UtAssert_STUB_COUNT(xSemaphoreCreateBinaryStatic, 2);
+
+    /* the id map's init, which runs first, failing -> OS_ERROR, and nothing else is set up */
+    OS_SharedGlobalVars.TicksPerSecond = 0;
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_TableMutex_Init), 1, -1);
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_ERROR);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TableMutex_Init, 3);
+    UtAssert_STUB_COUNT(xSemaphoreCreateBinaryStatic, 2);
+    UtAssert_UINT32_EQ(OS_SharedGlobalVars.TicksPerSecond, 0);
 }
 
 void Test_OS_IdleLoop_Impl(void)
@@ -337,6 +349,15 @@ void Test_TaskDied_Hooks(void)
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
     OS_FreeRTOS_TaskDied(UT_TASK_2);
     UtAssert_UINT32_EQ(UT_HookCalls, OS_FREERTOS_TASK_DIED_HOOKS);
+
+    /* the id map registers its hook inside that init, after the clear: only that one survives */
+    UtAssert_INT32_EQ(OS_FreeRTOS_OnTaskDied(UT_HookA), OS_SUCCESS);
+    UT_Stub_IdmapInitHook = UT_HookC;
+    UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);
+    OS_FreeRTOS_TaskDied(UT_TASK_3);
+    UT_Stub_IdmapInitHook = NULL;
+    UtAssert_UINT32_EQ(UT_HookCalls, OS_FREERTOS_TASK_DIED_HOOKS + 1);
+    UtAssert_True(UT_HookTask[2] == UT_TASK_3, "the hook the id map registered ran");
 }
 
 /*
@@ -352,6 +373,7 @@ void Osapi_Test_Setup(void)
     UT_Stub_LastGiveSem         = NULL;
     UT_Stub_CommonCurrentTask   = (TaskHandle_t)0x7000;
     UT_Stub_LastAbortedTask     = NULL;
+    UT_Stub_IdmapInitHook       = NULL;
 }
 
 void Osapi_Test_Teardown(void)

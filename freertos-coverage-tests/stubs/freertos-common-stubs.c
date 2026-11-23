@@ -126,6 +126,32 @@ void OS_FreeRTOS_Enter(void)
 }
 
 /*
+ * os-impl-common.c also calls this for the undefined type, but it lives in
+ * os-impl-idmap.c and is covered there.
+ */
+OS_FreeRTOS_TaskDiedHook_t UT_Stub_IdmapInitHook;
+
+int32 OS_FreeRTOS_TableMutex_Init(void)
+{
+    int32 status;
+
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_TableMutex_Init);
+
+    if (status < 0)
+    {
+        return OS_ERROR;
+    }
+
+    /* The real one registers its task death hook here, which the test can then see survive */
+    if (UT_Stub_IdmapInitHook != NULL)
+    {
+        return OS_FreeRTOS_OnTaskDied(UT_Stub_IdmapInitHook);
+    }
+
+    return OS_SUCCESS;
+}
+
+/*
  * os-impl-common.c also calls these for the mutex and condition variable object
  * types; they live in os-impl-mutex.c and os-impl-condvar.c and are covered
  * there.
