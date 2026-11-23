@@ -58,6 +58,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "os-shared-idmap.h"
+
 /*
  * closed is set once a delete has started. A zeroed gate is open.
  */
@@ -118,8 +120,12 @@ uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate);
  */
 typedef void (*OS_FreeRTOS_TaskDiedHook_t)(TaskHandle_t task);
 
-/* How many hooks OS_FreeRTOS_OnTaskDied() takes: one per primitive that keeps per-task state */
-#define OS_FREERTOS_TASK_DIED_HOOKS 2
+/*
+ * How many hooks OS_FreeRTOS_OnTaskDied() takes: one per primitive that keeps
+ * per-task state, and the idmap's one for the wait users and table locks a dead
+ * task held (see "Wait users" below)
+ */
+#define OS_FREERTOS_TASK_DIED_HOOKS 3
 
 /*
  * Registers a hook that OS_FreeRTOS_TaskDied() runs, after those registered
@@ -145,6 +151,70 @@ void OS_FreeRTOS_TaskDied(TaskHandle_t task);
  * in which case it does not return. Returns at once for any other task.
  */
 void OS_FreeRTOS_Enter(void);
+
+/*
+ * Wait users: the refcount based replacement for the gate, used by the queue
+ * first (the other primitives still use the gate until this is proven).
+ *
+ * OS_QueueGet() and its kind look the object up with OS_LOCK_MODE_NONE, so a
+ * delete does not know a task is blocked in the kernel on it. Instead of a gate
+ * kept next to every object, the blocking call takes OSAL's own refcount on the
+ * object for as long as it is inside, which OS_LOCK_MODE_EXCLUSIVE (the delete)
+ * waits to reach zero:
+ *
+ *     - OS_FreeRTOS_WaitEnter() calls OS_FreeRTOS_Enter(), then takes the
+ *       refcount (OS_ObjectIdGetById() with OS_LOCK_MODE_REFCOUNT) and lists
+ *       the caller as a wait user, a node kept on the caller's stack;
+ *     - OS_FreeRTOS_WaitLeave() unlists the node and gives the refcount back;
+ *     - a delete finds the refcount above zero, and OSAL retries it a few times,
+ *       calling OS_WaitForStateChange_Impl() between the tries. That function
+ *       (os-impl-idmap.c) is where the users blocked on an object that is being
+ *       deleted (its record reads OS_OBJECT_ID_RESERVED) are woken, so they
+ *       leave, the refcount drops to zero and the delete goes ahead;
+ *     - a task deleted while it is in such a call never reaches Leave, so the
+ *       idmap's task death hook unlists its nodes and gives their refcounts back.
+ *
+ * The table locks OSAL takes around its own bookkeeping (OS_Lock_Global_Impl()
+ * and its two companions) are defined in os-impl-idmap.c too: one lock per object
+ * type, which a task death releases if the dead task held it.
+ */
+typedef struct OS_impl_wait_user
+{
+    // cppcheck-suppress unusedStructMember ; used in os-impl-idmap.c
+    TaskHandle_t              task;
+    // cppcheck-suppress unusedStructMember ; used in os-impl-idmap.c
+    OS_object_token_t         token; /* the refcount lock this user holds, from OS_ObjectIdGetById() */
+    // cppcheck-suppress unusedStructMember ; the list is walked in os-impl-idmap.c
+    struct OS_impl_wait_user *next;
+} OS_impl_wait_user_t;
+
+/*
+ * Calls OS_FreeRTOS_Enter(), then takes a refcount on the object that token
+ * names, through a lookup by the token's type and id, and lists the caller under
+ * the calling task. token is the one the Impl function was handed (the lookup that
+ * took no lock); user keeps the new refcount token. Returns OS_SUCCESS, or what the
+ * lookup returned (OS_ERR_INVALID_ID for an object that was deleted,
+ * OS_ERR_OBJECT_IN_USE if it stayed reserved for OSAL's retries), in which case
+ * nothing is listed and Leave must not be called.
+ */
+int32 OS_FreeRTOS_WaitEnter(const OS_object_token_t *token, OS_impl_wait_user_t *user);
+
+/*
+ * Undoes a successful Enter (pass the same user): unlists the node and gives the
+ * refcount back. Returns true if the object was being deleted (its record read
+ * OS_OBJECT_ID_RESERVED) just before the refcount was given back, i.e. a blocked
+ * call that failed was woken by the delete and did not time out.
+ */
+bool OS_FreeRTOS_WaitLeave(OS_impl_wait_user_t *user);
+
+/*
+ * Defined in os-impl-idmap.c, called by OS_API_Impl_Init() for the undefined type
+ * once it has emptied the task death hook list. Resets the table lock of every
+ * object type (a held flag and an owner, not a semaphore, see os-impl-idmap.c) and
+ * registers the task death hook. Returns OS_SUCCESS, or OS_ERROR if the hook could
+ * not be registered.
+ */
+int32 OS_FreeRTOS_TableMutex_Init(void);
 
 /*
  * The init hooks OS_API_Impl_Init() in os-impl-common.c calls, each defined by

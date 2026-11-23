@@ -100,7 +100,7 @@ set(FREERTOS_COVERAGE_COMMON_SOURCES
 # OS_*_table arrays, OS_TaskEntryPoint, ...) from OSAL's own ut_osapi_*_stubs
 # libraries, as OSAL's unit-test-coverage does, instead of the hand-written
 # stubs/osal-shared-stubs.c.
-set(FREERTOS_OSAL_STUB_MODULES queue timebase)
+set(FREERTOS_OSAL_STUB_MODULES idmap queue timebase)
 
 # Umbrella target aggregating every discovered module's testrunner below, so
 # CI (and anyone else) can build "all coverage tests that currently exist"
@@ -119,6 +119,7 @@ set(FREERTOS_MODULE_LIST
     files
     filesys
     heap
+    idmap
     mutex
     queue
     tasks
@@ -285,7 +286,6 @@ set(FREERTOS_STUB_MODULES
     errors
     file
     filesys
-    idmap
     module
     network
     rwlock

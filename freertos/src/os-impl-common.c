@@ -35,15 +35,25 @@ static uint32                     OS_FreeRTOS_TaskDiedHookCount;
  *
  *  Purpose: Local helper routine, not part of OSAL API.
  *           The port's own setup, which belongs to no object type: empties
- *           the task death hook list, sets the tick values OSAL reads, and
- *           creates the semaphore the idle loop waits on. OS_API_Init() calls
- *           OS_API_Impl_Init() with the undefined type first, so the hooks the
- *           later types register survive the reset.
+ *           the task death hook list, sets up the id map's table locks (which
+ *           registers the id map's task death hook, so that must come right
+ *           after the reset for the hook to survive it), sets the tick values
+ *           OSAL reads, and creates the semaphore the idle loop waits on.
+ *           OS_API_Init() calls OS_API_Impl_Init() with the undefined type
+ *           first, so the hooks the later types register survive the reset.
  *
  *-----------------------------------------------------------------*/
 static int32 OS_FreeRTOS_GlobalInit(void)
 {
+    int32 status;
+
     OS_FreeRTOS_TaskDiedHookCount = 0;
+
+    status = OS_FreeRTOS_TableMutex_Init();
+    if (status != OS_SUCCESS)
+    {
+        return OS_ERROR;
+    }
 
     OS_SharedGlobalVars.TicksPerSecond  = configTICK_RATE_HZ;
     OS_SharedGlobalVars.MicroSecPerTick = 1000000 / configTICK_RATE_HZ;
