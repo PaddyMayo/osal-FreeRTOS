@@ -5,7 +5,7 @@
  *
  *          The port has one littlefs instance on the BSP's storage device
  *          (OS_BSP_GenericFreeRTOSGlobal.StorageConfig), mounted once by
- *          OS_FreeRTOS_FileSysInit. Each OSAL volume is a directory in the
+ *          OS_FreeRTOS_FileSysAPI_Impl_Init. Each OSAL volume is a directory in the
  *          root of it, named after the volume, like the volatile volumes of
  *          the POSIX and RTEMS ports: the volumes share the free space of the
  *          device, and starting, formatting, mounting or unmounting one leaves
@@ -42,7 +42,7 @@ static SemaphoreHandle_t OS_FreeRTOS_LfsMutex;
  *           so that a device that is merely failing is not wiped.
  *
  *-----------------------------------------------------------------*/
-int32 OS_FreeRTOS_FileSysInit(void)
+int32 OS_FreeRTOS_FileSysAPI_Impl_Init(void)
 {
     int err;
 

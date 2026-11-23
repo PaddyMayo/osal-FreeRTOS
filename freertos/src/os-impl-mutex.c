@@ -24,7 +24,7 @@
  *          Takes and Gives that are already in.
  *
  *          A task deleted while it holds a mutex cannot give it back (only the
- *          holder can), so OS_FreeRTOS_MutexOwnerDied(), which OS_FreeRTOS_MutexInit()
+ *          holder can), so OS_FreeRTOS_MutexOwnerDied(), which OS_FreeRTOS_MutexAPI_Impl_Init()
  *          registers for task death (see os-freertos.h), orphans it: the gate is
  *          closed, the Takes blocked on it are woken with an error, and Delete,
  *          which finds it held but closed, frees it.
@@ -51,7 +51,7 @@ static void OS_FreeRTOS_MutexOwnerDied(TaskHandle_t task);
  *           prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
-int32 OS_FreeRTOS_MutexInit(void)
+int32 OS_FreeRTOS_MutexAPI_Impl_Init(void)
 {
     return OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_MutexOwnerDied);
 }

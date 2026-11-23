@@ -27,7 +27,7 @@
 #define OS_FREERTOS_LFS_FILE_CACHE_SIZE 128
 #endif
 
-/* The one littlefs instance, mounted by OS_FreeRTOS_FileSysInit and never unmounted */
+/* The one littlefs instance, mounted by OS_FreeRTOS_FileSysAPI_Impl_Init and never unmounted */
 extern lfs_t OS_FreeRTOS_Lfs;
 
 /*----------------------------------------------------------------

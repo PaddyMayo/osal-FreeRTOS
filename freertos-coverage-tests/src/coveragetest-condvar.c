@@ -787,22 +787,22 @@ void Test_OS_CondVarTimedWait_Impl_NoClock(void)
     UtAssert_STUB_COUNT(OS_FreeRTOS_MsToTicks, 0);
 }
 
-void Test_OS_FreeRTOS_CondVarInit(void)
+void Test_OS_FreeRTOS_CondVarAPI_Impl_Init(void)
 {
     /* registers, for task death, the hook that drops a dead task's wait nodes and orphans its mutexes */
-    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarAPI_Impl_Init(), OS_SUCCESS);
     UtAssert_STUB_COUNT(OS_FreeRTOS_OnTaskDied, 1);
     UtAssert_True(UT_Stub_TaskDiedHook != NULL, "a task death hook is registered");
 
     /* the registry refuses -> OS_ERROR, which fails OS_API_Init() */
     UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_OnTaskDied), 1, -1);
-    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarInit(), OS_ERROR);
+    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarAPI_Impl_Init(), OS_ERROR);
 }
 
 void Test_OS_FreeRTOS_CondVarTaskDied(void)
 {
     /* the hook the init registered is what runs when a task dies */
-    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_CondVarAPI_Impl_Init(), OS_SUCCESS);
 
     /* two condition variables exist; the others were never created and are skipped */
     UT_CondVarTest_SetImplMutex(UT_INDEX_0, UT_MUTEX);
@@ -901,7 +901,7 @@ void UtTest_Setup(void)
     ADD_TEST(OS_CondVarTimedWait_Impl_Past);
     ADD_TEST(OS_CondVarTimedWait_Impl_Far);
     ADD_TEST(OS_CondVarTimedWait_Impl_NoClock);
-    ADD_TEST(OS_FreeRTOS_CondVarInit);
+    ADD_TEST(OS_FreeRTOS_CondVarAPI_Impl_Init);
     ADD_TEST(OS_FreeRTOS_CondVarTaskDied);
     ADD_TEST(OS_CondVarGetInfo_Impl);
 }

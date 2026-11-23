@@ -101,11 +101,11 @@ void vTaskExitCritical(void)
  * os-impl-tasks.c and is covered there. This runner links only the common
  * module, so it gets a stand-in that can be made to fail.
  */
-int32 OS_FreeRTOS_TaskInit(void)
+int32 OS_FreeRTOS_TaskAPI_Impl_Init(void)
 {
     int32 status;
 
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_TaskInit);
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_TaskAPI_Impl_Init);
 
     if (status < 0)
     {
@@ -130,11 +130,11 @@ void OS_FreeRTOS_Enter(void)
  * types; they live in os-impl-mutex.c and os-impl-condvar.c and are covered
  * there.
  */
-int32 OS_FreeRTOS_MutexInit(void)
+int32 OS_FreeRTOS_MutexAPI_Impl_Init(void)
 {
     int32 status;
 
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_MutexInit);
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_MutexAPI_Impl_Init);
 
     if (status < 0)
     {
@@ -144,11 +144,11 @@ int32 OS_FreeRTOS_MutexInit(void)
     return OS_SUCCESS;
 }
 
-int32 OS_FreeRTOS_CondVarInit(void)
+int32 OS_FreeRTOS_CondVarAPI_Impl_Init(void)
 {
     int32 status;
 
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_CondVarInit);
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_CondVarAPI_Impl_Init);
 
     if (status < 0)
     {
@@ -163,11 +163,11 @@ int32 OS_FreeRTOS_CondVarInit(void)
  * types; they live in os-impl-files.c and os-impl-filesys.c and are covered
  * there.
  */
-int32 OS_FreeRTOS_FileInit(void)
+int32 OS_FreeRTOS_StreamAPI_Impl_Init(void)
 {
     int32 status;
 
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_FileInit);
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_StreamAPI_Impl_Init);
 
     if (status < 0)
     {
@@ -177,11 +177,11 @@ int32 OS_FreeRTOS_FileInit(void)
     return OS_SUCCESS;
 }
 
-int32 OS_FreeRTOS_FileSysInit(void)
+int32 OS_FreeRTOS_FileSysAPI_Impl_Init(void)
 {
     int32 status;
 
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_FileSysInit);
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_FileSysAPI_Impl_Init);
 
     if (status < 0)
     {
