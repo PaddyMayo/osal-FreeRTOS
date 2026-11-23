@@ -33,12 +33,43 @@ static uint32                     OS_FreeRTOS_TaskDiedHookCount;
 
 /*----------------------------------------------------------------
  *
+ *  Purpose: Local helper routine, not part of OSAL API.
+ *           The port's own setup, which belongs to no object type: empties
+ *           the task death hook list, sets the tick values OSAL reads, and
+ *           creates the semaphore the idle loop waits on. OS_API_Init() calls
+ *           OS_API_Impl_Init() with the undefined type first, so the hooks the
+ *           later types register survive the reset.
+ *
+ *-----------------------------------------------------------------*/
+static int32 OS_FreeRTOS_GlobalInit(void)
+{
+    OS_FreeRTOS_TaskDiedHookCount = 0;
+
+    OS_SharedGlobalVars.TicksPerSecond  = configTICK_RATE_HZ;
+    OS_SharedGlobalVars.MicroSecPerTick = 1000000 / configTICK_RATE_HZ;
+
+    OS_FreeRTOS_IdleSem = xSemaphoreCreateBinaryStatic(&OS_FreeRTOS_IdleSemBuffer);
+    if (OS_FreeRTOS_IdleSem == NULL)
+    {
+        return OS_ERROR;
+    }
+
+    return OS_SUCCESS;
+}
+
+/*----------------------------------------------------------------
+ *
  *  Purpose: Implemented per internal OSAL API
  *           See prototype for argument/return detail
  *
  *-----------------------------------------------------------------*/
 int32 OS_API_Impl_Init(osal_objtype_t idtype)
 {
+    if (idtype == OS_OBJECT_TYPE_UNDEFINED)
+    {
+        return OS_FreeRTOS_GlobalInit();
+    }
+
     if (idtype == OS_OBJECT_TYPE_OS_TASK)
     {
         return OS_FreeRTOS_TaskInit();
@@ -64,23 +95,7 @@ int32 OS_API_Impl_Init(osal_objtype_t idtype)
         return OS_FreeRTOS_CondVarInit();
     }
 
-    if (idtype != OS_OBJECT_TYPE_UNDEFINED)
-    {
-        return OS_SUCCESS;
-    }
-
-    /* OS_API_Init() calls this type first, so the hooks the later types register survive */
-    OS_FreeRTOS_TaskDiedHookCount = 0;
-
-    OS_SharedGlobalVars.TicksPerSecond  = configTICK_RATE_HZ;
-    OS_SharedGlobalVars.MicroSecPerTick = 1000000 / configTICK_RATE_HZ;
-
-    OS_FreeRTOS_IdleSem = xSemaphoreCreateBinaryStatic(&OS_FreeRTOS_IdleSemBuffer);
-    if (OS_FreeRTOS_IdleSem == NULL)
-    {
-        return OS_ERROR;
-    }
-
+    /* any other type has nothing to set up */
     return OS_SUCCESS;
 }
 
