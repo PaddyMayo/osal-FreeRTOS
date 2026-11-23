@@ -10,12 +10,15 @@
  *          reports max_size as the size copied. Put never blocks; Get maps
  *          OS_PEND / OS_CHECK / millisecond timeouts onto FreeRTOS ticks.
  *
- *          Get and Put reach the queue without raising the refcount that
- *          OS_QueueDelete() waits on, so they pass through the queue's gate
- *          (see os-freertos.h). OS_QueueDelete_Impl() closes the gate, wakes
- *          the Gets that are blocked, which then return OS_ERROR, and frees
- *          the queue only once every user has left - vQueueDelete() would
- *          otherwise free a queue that tasks are still waiting on.
+ *          Get and Put look the queue up without a lock, so they take
+ *          OSAL's own refcount on it for as long as they are inside the
+ *          kernel call (OS_FreeRTOS_WaitEnter()/WaitLeave(), see os-freertos.h).
+ *          OS_QueueDelete() takes the queue exclusively, which waits for that
+ *          refcount to reach zero (the blocked Gets are woken by
+ *          OS_WaitForStateChange_Impl() and return OS_ERROR), so
+ *          OS_QueueDelete_Impl() only runs with no user inside the queue and
+ *          can free it - vQueueDelete() would otherwise free a queue that tasks
+ *          are still waiting on.
  */
 
 #include "FreeRTOS.h"
@@ -50,8 +53,6 @@ int32 OS_QueueCreate_Impl(const OS_object_token_t *token, uint32 flags)
         return OS_ERROR;
     }
 
-    OS_FreeRTOS_GateOpen(&impl->gate);
-
     return OS_SUCCESS;
 }
 
@@ -67,19 +68,11 @@ int32 OS_QueueDelete_Impl(const OS_object_token_t *token)
 
     impl = OS_OBJECT_TABLE_GET(OS_impl_queue_table, *token);
 
-    /* From here on no Get or Put can start */
-    OS_FreeRTOS_GateClose(&impl->gate);
-
     /*
-     * Wake the blocked Gets and wait for every user to leave. A user that was
-     * not yet inside the kernel call is woken by a later pass, and the delay
-     * lets tasks of a lower priority than this one run and leave.
+     * Safe to free the queue: OS_QueueDelete() holds the object exclusively,
+     * which OSAL grants only once the refcount is zero, and every Get and Put
+     * holds a refcount while it is inside. No task can be using impl->id.
      */
-    while (OS_FreeRTOS_GateWake(&impl->gate) > 0)
-    {
-        vTaskDelay(1);
-    }
-
     vQueueDelete(impl->id);
     impl->id = NULL;
 
@@ -96,10 +89,11 @@ int32 OS_QueueGet_Impl(const OS_object_token_t *token, void *data, size_t size, 
 {
     OS_impl_queue_internal_record_t  *impl;
     const OS_queue_internal_record_t *queue;
-    OS_impl_gate_user_t               user;
+    OS_impl_wait_user_t               user;
     TickType_t                        ticks;
     size_t                            max_size;
     BaseType_t                        received;
+    int32                             status;
     bool                              deleted;
 
     impl  = OS_OBJECT_TABLE_GET(OS_impl_queue_table, *token);
@@ -131,14 +125,15 @@ int32 OS_QueueGet_Impl(const OS_object_token_t *token, void *data, size_t size, 
         ticks = OS_FreeRTOS_MsToTicks(timeout);
     }
 
-    if (!OS_FreeRTOS_GateEnter(&impl->gate, &user))
+    status = OS_FreeRTOS_WaitEnter(token, &user);
+    if (status != OS_SUCCESS)
     {
         *size_copied = 0;
-        return OS_ERR_INVALID_ID;
+        return status;
     }
 
     received = xQueueReceive(impl->id, data, ticks);
-    deleted  = OS_FreeRTOS_GateLeave(&impl->gate, &user);
+    deleted  = OS_FreeRTOS_WaitLeave(&user);
 
     if (received != pdPASS)
     {
@@ -158,7 +153,11 @@ int32 OS_QueueGet_Impl(const OS_object_token_t *token, void *data, size_t size, 
         return OS_QUEUE_TIMEOUT;
     }
 
-    /* Not queue->max_size: the delete may have reset the record by now */
+    /*
+     * Not queue->max_size: the refcount is given back by now, so a delete may
+     * have run and reset the shared record. The copy taken before entering is
+     * the one this Get was sized against.
+     */
     *size_copied = max_size;
 
     return OS_SUCCESS;
@@ -174,8 +173,9 @@ int32 OS_QueuePut_Impl(const OS_object_token_t *token, const void *data, size_t 
 {
     OS_impl_queue_internal_record_t  *impl;
     const OS_queue_internal_record_t *queue;
-    OS_impl_gate_user_t               user;
+    OS_impl_wait_user_t               user;
     BaseType_t                        sent;
+    int32                             status;
 
     impl  = OS_OBJECT_TABLE_GET(OS_impl_queue_table, *token);
     queue = OS_OBJECT_TABLE_GET(OS_queue_table, *token);
@@ -190,14 +190,15 @@ int32 OS_QueuePut_Impl(const OS_object_token_t *token, const void *data, size_t 
         return OS_QUEUE_INVALID_SIZE;
     }
 
-    if (!OS_FreeRTOS_GateEnter(&impl->gate, &user))
+    status = OS_FreeRTOS_WaitEnter(token, &user);
+    if (status != OS_SUCCESS)
     {
-        return OS_ERR_INVALID_ID;
+        return status;
     }
 
     /* OS_QueuePut() is documented as non-blocking, so use a zero timeout. */
     sent = xQueueSend(impl->id, data, 0);
-    (void)OS_FreeRTOS_GateLeave(&impl->gate, &user);
+    (void)OS_FreeRTOS_WaitLeave(&user);
 
     if (sent != pdPASS)
     {

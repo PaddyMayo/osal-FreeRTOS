@@ -25,7 +25,4 @@ extern size_t const UT_Ref_OS_impl_queue_table_SIZE;
 void          UT_QueueTest_SetImplQueueId(osal_index_t local_id, QueueHandle_t QueueId);
 QueueHandle_t UT_QueueTest_GetImplQueueId(osal_index_t local_id);
 
-/* The gate of a queue, for checking that the right one was entered, left, opened or closed */
-OS_impl_gate_t *UT_QueueTest_GetImplGate(osal_index_t local_id);
-
 #endif /* UT_ADAPTOR_QUEUE_H */

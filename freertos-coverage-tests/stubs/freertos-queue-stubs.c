@@ -119,75 +119,36 @@ BaseType_t xQueueReceive(QueueHandle_t xQueue, void *pvBuffer, TickType_t xTicks
 }
 
 /*
- * The gate functions and vTaskDelay that os-impl-queue.c uses. The gate lives in
- * os-impl-common.c and is covered there, and this runner links only the queue
+ * The wait user functions that os-impl-queue.c uses. They live in
+ * os-impl-idmap.c and are covered there, and this runner links only the queue
  * module, so it gets stand-ins that record their arguments. A test makes the
- * gate refuse (OS_FreeRTOS_GateEnter fails with a negative retcode) or the
- * delete be seen on leaving (a non-zero default return from
- * OS_FreeRTOS_GateLeave).
+ * Enter refuse by scripting its return value (UT_SetDeferredRetcode() or
+ * UT_SetDefaultReturnValue() with an OSAL status), and makes the Leave report a
+ * delete by a non-zero default return from OS_FreeRTOS_WaitLeave.
  */
-TickType_t                 UT_Stub_QueueLastDelayTicks;
-const OS_impl_gate_t      *UT_Stub_LastGate;
-OS_impl_gate_user_t       *UT_Stub_LastEnterUser;
-const OS_impl_gate_user_t *UT_Stub_LastLeaveUser;
+const OS_object_token_t *UT_Stub_LastWaitToken;
+OS_impl_wait_user_t     *UT_Stub_LastEnterUser;
+OS_impl_wait_user_t     *UT_Stub_LastLeaveUser;
 
 // cppcheck-suppress constParameterCallback
-bool OS_FreeRTOS_GateEnter(OS_impl_gate_t *gate, OS_impl_gate_user_t *user)
+int32 OS_FreeRTOS_WaitEnter(const OS_object_token_t *token, OS_impl_wait_user_t *user)
 {
-    int32 status;
-
-    UT_Stub_LastGate      = gate;
+    UT_Stub_LastWaitToken = token;
     UT_Stub_LastEnterUser = user;
 
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_GateEnter);
-
-    return (status >= 0);
+    return UT_DEFAULT_IMPL(OS_FreeRTOS_WaitEnter);
 }
 
-bool OS_FreeRTOS_GateLeave(const OS_impl_gate_t *gate, const OS_impl_gate_user_t *user)
+// cppcheck-suppress constParameterCallback
+bool OS_FreeRTOS_WaitLeave(OS_impl_wait_user_t *user)
 {
     int32 status;
 
-    UT_Stub_LastGate      = gate;
     UT_Stub_LastLeaveUser = user;
 
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_GateLeave);
+    status = UT_DEFAULT_IMPL(OS_FreeRTOS_WaitLeave);
 
     return (status != 0);
-}
-
-// cppcheck-suppress constParameterCallback
-void OS_FreeRTOS_GateOpen(OS_impl_gate_t *gate)
-{
-    UT_Stub_LastGate = gate;
-
-    UT_DEFAULT_IMPL(OS_FreeRTOS_GateOpen);
-}
-
-// cppcheck-suppress constParameterCallback
-void OS_FreeRTOS_GateClose(OS_impl_gate_t *gate)
-{
-    UT_Stub_LastGate = gate;
-
-    UT_DEFAULT_IMPL(OS_FreeRTOS_GateClose);
-}
-
-uint32 OS_FreeRTOS_GateWake(const OS_impl_gate_t *gate)
-{
-    int32 status;
-
-    UT_Stub_LastGate = gate;
-
-    status = UT_DEFAULT_IMPL(OS_FreeRTOS_GateWake);
-
-    return (uint32)status;
-}
-
-void vTaskDelay(TickType_t xTicksToDelay)
-{
-    UT_Stub_QueueLastDelayTicks = xTicksToDelay;
-
-    UT_DEFAULT_IMPL(vTaskDelay);
 }
 
 /*
