@@ -22,14 +22,13 @@
 #include "os-freertos.h"
 
 /*
- * OS_QueueGet() and OS_QueuePut() look the queue up with OS_LOCK_MODE_NONE,
- * which does not raise the refcount that OS_QueueDelete() waits on, so they
- * pass through the gate, which the delete closes and waits on (os-freertos.h).
+ * Only the FreeRTOS handle: protecting Get and Put against a concurrent delete
+ * is done by OSAL's refcount, which they take through OS_FreeRTOS_WaitEnter()
+ * (os-freertos.h), so nothing is kept per queue for it.
  */
 typedef struct
 {
-    QueueHandle_t  id;
-    OS_impl_gate_t gate;
+    QueueHandle_t id;
 } OS_impl_queue_internal_record_t;
 
 /* Table where the OS object information is stored */

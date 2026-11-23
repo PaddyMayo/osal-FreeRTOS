@@ -25,8 +25,3 @@ QueueHandle_t UT_QueueTest_GetImplQueueId(osal_index_t local_id)
 {
     return OS_impl_queue_table[local_id].id;
 }
-
-OS_impl_gate_t *UT_QueueTest_GetImplGate(osal_index_t local_id)
-{
-    return &OS_impl_queue_table[local_id].gate;
-}
