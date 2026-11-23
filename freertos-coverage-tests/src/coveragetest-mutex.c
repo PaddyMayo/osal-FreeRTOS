@@ -209,16 +209,16 @@ void Test_OS_MutSemDelete_Impl_Orphaned(void)
     UtAssert_True(UT_MutexTest_GetImplMutexId(UT_INDEX_0) == NULL, "mutex handle cleared from impl table");
 }
 
-void Test_OS_FreeRTOS_MutexInit(void)
+void Test_OS_FreeRTOS_MutexAPI_Impl_Init(void)
 {
     /* registers, for task death, the hook that orphans a dead task's mutexes */
-    UtAssert_INT32_EQ(OS_FreeRTOS_MutexInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_MutexAPI_Impl_Init(), OS_SUCCESS);
     UtAssert_STUB_COUNT(OS_FreeRTOS_OnTaskDied, 1);
     UtAssert_True(UT_Stub_TaskDiedHook != NULL, "a task death hook is registered");
 
     /* the registry refuses -> OS_ERROR, which fails OS_API_Init() */
     UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_OnTaskDied), 1, -1);
-    UtAssert_INT32_EQ(OS_FreeRTOS_MutexInit(), OS_ERROR);
+    UtAssert_INT32_EQ(OS_FreeRTOS_MutexAPI_Impl_Init(), OS_ERROR);
 }
 
 void Test_OS_MutexOwnerDied(void)
@@ -228,7 +228,7 @@ void Test_OS_MutexOwnerDied(void)
     SemaphoreHandle_t other_mutex = (SemaphoreHandle_t)0x5003;
 
     /* the hook the init registered is what runs when a task dies */
-    UtAssert_INT32_EQ(OS_FreeRTOS_MutexInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_MutexAPI_Impl_Init(), OS_SUCCESS);
 
     /* three mutexes exist; the fourth slot was never created and is skipped */
     UT_MutexTest_SetImplMutexId(OSAL_INDEX_C(0), free_mutex);
@@ -388,7 +388,7 @@ void UtTest_Setup(void)
     ADD_TEST(OS_MutSemDelete_Impl_Drain);
     ADD_TEST(OS_MutSemDelete_Impl_Locked);
     ADD_TEST(OS_MutSemDelete_Impl_Orphaned);
-    ADD_TEST(OS_FreeRTOS_MutexInit);
+    ADD_TEST(OS_FreeRTOS_MutexAPI_Impl_Init);
     ADD_TEST(OS_MutexOwnerDied);
     ADD_TEST(OS_MutSemGive_Impl);
     ADD_TEST(OS_MutSemTake_Impl);

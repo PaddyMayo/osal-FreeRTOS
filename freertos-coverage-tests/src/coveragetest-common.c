@@ -48,49 +48,49 @@ void Test_OS_API_Impl_Init(void)
     /* any type but the first, tasks, streams and file systems -> nothing to do, nothing created */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_QUEUE), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreCreateBinaryStatic, 0);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 0);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskAPI_Impl_Init, 0);
     UtAssert_UINT32_EQ(OS_SharedGlobalVars.TicksPerSecond, 0);
 
     /* the task type -> the task module sets up its TCB pool, and its failure is passed on */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_TASK), OS_SUCCESS);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskAPI_Impl_Init, 1);
     UtAssert_STUB_COUNT(xSemaphoreCreateBinaryStatic, 0);
 
-    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_TaskInit), 1, -1);
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_TaskAPI_Impl_Init), 1, -1);
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_TASK), OS_ERROR);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskInit, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_TaskAPI_Impl_Init, 2);
 
     /* the stream type -> the file module clears its handle table, and its failure is passed on */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_STREAM), OS_SUCCESS);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_FileInit, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_StreamAPI_Impl_Init, 1);
 
-    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_FileInit), 1, -1);
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_StreamAPI_Impl_Init), 1, -1);
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_STREAM), OS_ERROR);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_FileInit, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_StreamAPI_Impl_Init, 2);
 
     /* the file system type -> the filesys module creates its lock, and its failure is passed on */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_FILESYS), OS_SUCCESS);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_FileSysInit, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_FileSysAPI_Impl_Init, 1);
 
-    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_FileSysInit), 1, -1);
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_FileSysAPI_Impl_Init), 1, -1);
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_FILESYS), OS_ERROR);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_FileSysInit, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_FileSysAPI_Impl_Init, 2);
 
     /* mutex -> the mutex module registers its task death hook, and a refused registration fails the init */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_MUTEX), OS_SUCCESS);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexInit, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexAPI_Impl_Init, 1);
 
-    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_MutexInit), 1, -1);
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_MutexAPI_Impl_Init), 1, -1);
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_MUTEX), OS_ERROR);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexInit, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_MutexAPI_Impl_Init, 2);
 
     /* condition variable -> the same, for the condvar module */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_CONDVAR), OS_SUCCESS);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_CondVarInit, 1);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_CondVarAPI_Impl_Init, 1);
 
-    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_CondVarInit), 1, -1);
+    UT_SetDeferredRetcode(UT_KEY(OS_FreeRTOS_CondVarAPI_Impl_Init), 1, -1);
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_OS_CONDVAR), OS_ERROR);
-    UtAssert_STUB_COUNT(OS_FreeRTOS_CondVarInit, 2);
+    UtAssert_STUB_COUNT(OS_FreeRTOS_CondVarAPI_Impl_Init, 2);
 
     /* the first type -> tick rate published, idle semaphore created */
     UtAssert_INT32_EQ(OS_API_Impl_Init(OS_OBJECT_TYPE_UNDEFINED), OS_SUCCESS);

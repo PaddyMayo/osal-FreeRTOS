@@ -30,7 +30,7 @@ static const int OS_FreeRTOS_LfsAccess[] = { LFS_O_RDONLY, LFS_O_WRONLY, LFS_O_R
  *           See prototype in os-impl-files.h.
  *
  *-----------------------------------------------------------------*/
-int32 OS_FreeRTOS_FileInit(void)
+int32 OS_FreeRTOS_StreamAPI_Impl_Init(void)
 {
     memset(OS_impl_filehandle_table, 0, sizeof(OS_impl_filehandle_table));
 

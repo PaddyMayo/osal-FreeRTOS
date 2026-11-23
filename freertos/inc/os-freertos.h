@@ -157,23 +157,23 @@ void OS_FreeRTOS_Enter(void);
  * entries. Returns OS_SUCCESS, or OS_ERROR if the semaphore could not be
  * created.
  */
-int32 OS_FreeRTOS_TaskInit(void);
+int32 OS_FreeRTOS_TaskAPI_Impl_Init(void);
 
 /*
  * Defined in os-impl-mutex.c. Registers the task death hook that orphans the
  * mutexes a dead task held. Returns what OS_FreeRTOS_OnTaskDied() does.
  */
-int32 OS_FreeRTOS_MutexInit(void);
+int32 OS_FreeRTOS_MutexAPI_Impl_Init(void);
 
 /*
  * Defined in os-impl-condvar.c. Registers the task death hook that drops a
  * dead task's wait nodes and orphans the condition variable mutexes it held.
  * Returns what OS_FreeRTOS_OnTaskDied() does.
  */
-int32 OS_FreeRTOS_CondVarInit(void);
+int32 OS_FreeRTOS_CondVarAPI_Impl_Init(void);
 
 /* Defined in os-impl-files.c. Clears the file handle table. Returns OS_SUCCESS. */
-int32 OS_FreeRTOS_FileInit(void);
+int32 OS_FreeRTOS_StreamAPI_Impl_Init(void);
 
 /*
  * Defined in os-impl-filesys.c. Creates the lock that serializes every call
@@ -182,7 +182,7 @@ int32 OS_FreeRTOS_FileInit(void);
  * or OS_ERROR if the lock could not be created or the storage could not be
  * mounted.
  */
-int32 OS_FreeRTOS_FileSysInit(void);
+int32 OS_FreeRTOS_FileSysAPI_Impl_Init(void);
 
 /*
  * Defined in os-impl-tasks.c. Converts a wait in milliseconds to ticks,

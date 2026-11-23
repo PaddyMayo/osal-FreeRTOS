@@ -60,11 +60,11 @@ static void UT_AssertLocked(uint32 calls)
 **********************************************************************************
 */
 
-void Test_OS_FreeRTOS_FileInit(void)
+void Test_OS_FreeRTOS_StreamAPI_Impl_Init(void)
 {
     memset(&OS_impl_filehandle_table[1], 0xA5, sizeof(OS_impl_filehandle_table[1]));
 
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_StreamAPI_Impl_Init(), OS_SUCCESS);
     UtAssert_MemCmpValue(OS_impl_filehandle_table, 0, sizeof(OS_impl_filehandle_table), "handle table cleared");
 }
 
@@ -295,7 +295,7 @@ void Osapi_Test_Teardown(void)
 
 void UtTest_Setup(void)
 {
-    ADD_TEST(OS_FreeRTOS_FileInit);
+    ADD_TEST(OS_FreeRTOS_StreamAPI_Impl_Init);
     ADD_TEST(OS_FileOpen_Impl);
     ADD_TEST(OS_FileNotImplemented_Impl);
     ADD_TEST(OS_FileTruncate_Impl);

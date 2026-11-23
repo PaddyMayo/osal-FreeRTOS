@@ -76,7 +76,7 @@ extern int32  UT_Stub_LastFinalizeDeleteStatus;
 extern uint32 UT_Stub_LastFinalizeDeleteIndex;
 
 extern void  OS_FreeRTOS_TaskCleanup(const void *tcb);
-extern int32 OS_FreeRTOS_TaskInit(void);
+extern int32 OS_FreeRTOS_TaskAPI_Impl_Init(void);
 
 /* Delete hook for the self-delete test: records how often it ran and whether the slot was released first */
 static uint32 UT_DeleteHookCalls;
@@ -215,10 +215,10 @@ void Test_OS_TaskCreate_Impl(void)
     UtAssert_STUB_COUNT(xSemaphoreGive, 7);
 }
 
-void Test_OS_FreeRTOS_TaskInit(void)
+void Test_OS_FreeRTOS_TaskAPI_Impl_Init(void)
 {
     /* one pool entry per task the table can hold, all free to begin with */
-    UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_TaskAPI_Impl_Init(), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreCreateCountingStatic, 1);
     UtAssert_NOT_NULL(UT_Stub_LastCountingSemBuffer);
     UtAssert_UINT32_EQ(UT_Stub_LastCountingSemMax, OS_MAX_TASKS);
@@ -226,7 +226,7 @@ void Test_OS_FreeRTOS_TaskInit(void)
 
     /* xSemaphoreCreateCountingStatic() failure -> OS_ERROR, which fails OS_API_Init() */
     UT_SetDeferredRetcode(UT_KEY(xSemaphoreCreateCountingStatic), 1, -1);
-    UtAssert_INT32_EQ(OS_FreeRTOS_TaskInit(), OS_ERROR);
+    UtAssert_INT32_EQ(OS_FreeRTOS_TaskAPI_Impl_Init(), OS_ERROR);
     UtAssert_STUB_COUNT(xSemaphoreCreateCountingStatic, 2);
 }
 
@@ -563,7 +563,7 @@ void UtTest_Setup(void)
 {
     ADD_TEST(OS_TaskMatch_Impl);
     ADD_TEST(OS_TaskCreate_Impl);
-    ADD_TEST(OS_FreeRTOS_TaskInit);
+    ADD_TEST(OS_FreeRTOS_TaskAPI_Impl_Init);
     ADD_TEST(OS_FreeRTOSTaskEntry);
     ADD_TEST(OS_TaskDetach_Impl);
     ADD_TEST(OS_TaskDelete_Impl);

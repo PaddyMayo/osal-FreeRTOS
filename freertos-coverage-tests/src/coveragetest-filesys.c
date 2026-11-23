@@ -54,10 +54,10 @@ extern SemaphoreHandle_t        UT_Stub_LastGiveSem;
 **********************************************************************************
 */
 
-void Test_OS_FreeRTOS_FileSysInit(void)
+void Test_OS_FreeRTOS_FileSysAPI_Impl_Init(void)
 {
     /* the lock is created in a static buffer, then the storage is mounted into the one lfs_t under it */
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysAPI_Impl_Init(), OS_SUCCESS);
     UtAssert_STUB_COUNT(xSemaphoreCreateMutexStatic, 1);
     UtAssert_True(UT_Stub_LastCreateMutexBuffer != NULL, "lock created in a static buffer");
     UtAssert_STUB_COUNT(lfs_mount, 1);
@@ -71,14 +71,14 @@ void Test_OS_FreeRTOS_FileSysInit(void)
     /* xSemaphoreCreateMutexStatic() failure -> OS_ERROR, nothing mounted */
     UT_ResetState(0);
     UT_SetDeferredRetcode(UT_KEY(xSemaphoreCreateMutexStatic), 1, -1);
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysInit(), OS_ERROR);
+    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysAPI_Impl_Init(), OS_ERROR);
     UtAssert_STUB_COUNT(xSemaphoreCreateMutexStatic, 1);
     UtAssert_STUB_COUNT(lfs_mount, 0);
 
     /* no file system on the device -> formatted, then mounted again */
     UT_ResetState(0);
     UT_SetDeferredRetcode(UT_KEY(lfs_mount), 1, LFS_ERR_CORRUPT);
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysAPI_Impl_Init(), OS_SUCCESS);
     UtAssert_STUB_COUNT(lfs_mount, 2);
     UtAssert_STUB_COUNT(lfs_format, 1);
     UtAssert_True(UT_Stub_LastLfs == &OS_FreeRTOS_Lfs, "lfs_format() called with the volume");
@@ -87,7 +87,7 @@ void Test_OS_FreeRTOS_FileSysInit(void)
     UT_ResetState(0);
     UT_SetDeferredRetcode(UT_KEY(lfs_mount), 1, LFS_ERR_CORRUPT);
     UT_SetDeferredRetcode(UT_KEY(lfs_format), 1, LFS_ERR_IO);
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysInit(), OS_ERROR);
+    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysAPI_Impl_Init(), OS_ERROR);
     UtAssert_STUB_COUNT(lfs_mount, 1);
     UtAssert_STUB_COUNT(lfs_format, 1);
 
@@ -95,21 +95,21 @@ void Test_OS_FreeRTOS_FileSysInit(void)
     UT_ResetState(0);
     UT_SetDeferredRetcode(UT_KEY(lfs_mount), 1, LFS_ERR_CORRUPT);
     UT_SetDeferredRetcode(UT_KEY(lfs_mount), 1, LFS_ERR_IO); /* queued behind the first */
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysInit(), OS_ERROR);
+    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysAPI_Impl_Init(), OS_ERROR);
     UtAssert_STUB_COUNT(lfs_mount, 2);
     UtAssert_STUB_COUNT(lfs_format, 1);
 
     /* any other mount error -> OS_ERROR, and the device is not formatted */
     UT_ResetState(0);
     UT_SetDeferredRetcode(UT_KEY(lfs_mount), 1, LFS_ERR_IO);
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysInit(), OS_ERROR);
+    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysAPI_Impl_Init(), OS_ERROR);
     UtAssert_STUB_COUNT(lfs_mount, 1);
     UtAssert_STUB_COUNT(lfs_format, 0);
 }
 
 void Test_OS_FreeRTOS_LfsLock(void)
 {
-    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysInit(), OS_SUCCESS);
+    UtAssert_INT32_EQ(OS_FreeRTOS_FileSysAPI_Impl_Init(), OS_SUCCESS);
     UT_ResetState(0);
 
     /* takes the lock created at init and waits as long as it takes */
@@ -341,7 +341,7 @@ void Osapi_Test_Teardown(void)
 
 void UtTest_Setup(void)
 {
-    ADD_TEST(OS_FreeRTOS_FileSysInit);
+    ADD_TEST(OS_FreeRTOS_FileSysAPI_Impl_Init);
     ADD_TEST(OS_FreeRTOS_LfsLock);
     ADD_TEST(OS_FileSysStartVolume_Impl);
     ADD_TEST(OS_FileSysStopVolume_Impl);

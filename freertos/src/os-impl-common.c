@@ -72,27 +72,27 @@ int32 OS_API_Impl_Init(osal_objtype_t idtype)
 
     if (idtype == OS_OBJECT_TYPE_OS_TASK)
     {
-        return OS_FreeRTOS_TaskInit();
+        return OS_FreeRTOS_TaskAPI_Impl_Init();
     }
 
     if (idtype == OS_OBJECT_TYPE_OS_STREAM)
     {
-        return OS_FreeRTOS_FileInit();
+        return OS_FreeRTOS_StreamAPI_Impl_Init();
     }
 
     if (idtype == OS_OBJECT_TYPE_OS_FILESYS)
     {
-        return OS_FreeRTOS_FileSysInit();
+        return OS_FreeRTOS_FileSysAPI_Impl_Init();
     }
 
     if (idtype == OS_OBJECT_TYPE_OS_MUTEX)
     {
-        return OS_FreeRTOS_MutexInit();
+        return OS_FreeRTOS_MutexAPI_Impl_Init();
     }
 
     if (idtype == OS_OBJECT_TYPE_OS_CONDVAR)
     {
-        return OS_FreeRTOS_CondVarInit();
+        return OS_FreeRTOS_CondVarAPI_Impl_Init();
     }
 
     /* any other type has nothing to set up */

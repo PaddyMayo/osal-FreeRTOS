@@ -32,7 +32,7 @@
  *
  *          A task deleted while it waits leaves a node on a stack that goes, and
  *          one deleted while it holds the mutex can never give it back, so
- *          OS_FreeRTOS_CondVarTaskDied(), which OS_FreeRTOS_CondVarInit() registers
+ *          OS_FreeRTOS_CondVarTaskDied(), which OS_FreeRTOS_CondVarAPI_Impl_Init() registers
  *          for task death (see os-freertos.h), drops the node and orphans the
  *          mutex.
  *
@@ -61,7 +61,7 @@ static void OS_FreeRTOS_CondVarTaskDied(TaskHandle_t task);
  *           prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
-int32 OS_FreeRTOS_CondVarInit(void)
+int32 OS_FreeRTOS_CondVarAPI_Impl_Init(void)
 {
     return OS_FreeRTOS_OnTaskDied(OS_FreeRTOS_CondVarTaskDied);
 }

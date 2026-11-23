@@ -88,7 +88,7 @@ TickType_t OS_FreeRTOS_MsToTicks(uint32 millisecond)
  *           use. See prototype in os-freertos.h.
  *
  *-----------------------------------------------------------------*/
-int32 OS_FreeRTOS_TaskInit(void)
+int32 OS_FreeRTOS_TaskAPI_Impl_Init(void)
 {
     OS_FreeRTOS_TcbSem = xSemaphoreCreateCountingStatic(OS_MAX_TASKS, OS_MAX_TASKS, &OS_FreeRTOS_TcbSemBuffer);
     if (OS_FreeRTOS_TcbSem == NULL)
